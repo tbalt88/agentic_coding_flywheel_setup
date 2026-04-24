@@ -5472,6 +5472,22 @@ install_cloud_db_legacy_tools() {
     fi
 }
 
+cleanup_supabase_cli_release_temp() {
+    local tmp_dir="${1:-}"
+    local tmp_tgz="${2:-}"
+    local tmp_checksums="${3:-}"
+
+    [[ -n "$tmp_tgz" ]] && rm -f -- "$tmp_tgz" 2>/dev/null || true
+    [[ -n "$tmp_checksums" ]] && rm -f -- "$tmp_checksums" 2>/dev/null || true
+
+    if [[ -n "$tmp_dir" && -d "$tmp_dir" ]]; then
+        case "$tmp_dir" in
+            "${TMPDIR:-/tmp}"/acfs-supabase.*) rm -rf -- "$tmp_dir" 2>/dev/null || true ;;
+            *) log_warn "Supabase CLI: refusing to clean unexpected temp dir: $tmp_dir" ;;
+        esac
+    fi
+}
+
 install_supabase_cli_release() {
     local arch=""
     case "$(uname -m)" in
@@ -5509,16 +5525,18 @@ install_supabase_cli_release() {
 
     if [[ -z "$tmp_dir" ]] || [[ -z "$tmp_tgz" ]] || [[ -z "$tmp_checksums" ]]; then
         log_error "Supabase CLI: failed to create temp files"
+        cleanup_supabase_cli_release_temp "$tmp_dir" "$tmp_tgz" "$tmp_checksums"
         return 1
     fi
-    trap 'rm -rf "${tmp_dir:-}" "${tmp_tgz:-}" "${tmp_checksums:-}" 2>/dev/null || true; trap - RETURN' RETURN
 
     if ! acfs_curl -o "$tmp_tgz" "${base_url}/${tarball}" 2>/dev/null; then
         log_error "Supabase CLI: failed to download ${tarball}"
+        cleanup_supabase_cli_release_temp "$tmp_dir" "$tmp_tgz" "$tmp_checksums"
         return 1
     fi
     if ! acfs_curl -o "$tmp_checksums" "${base_url}/${checksums}" 2>/dev/null; then
         log_error "Supabase CLI: failed to download checksums"
+        cleanup_supabase_cli_release_temp "$tmp_dir" "$tmp_tgz" "$tmp_checksums"
         return 1
     fi
 
@@ -5526,6 +5544,7 @@ install_supabase_cli_release() {
     expected_sha="$(grep -E " ${tarball}\$" "$tmp_checksums" 2>/dev/null | awk '{print $1}' | head -n1)" || true
     if [[ -z "$expected_sha" ]]; then
         log_error "Supabase CLI: checksum entry not found for ${tarball}"
+        cleanup_supabase_cli_release_temp "$tmp_dir" "$tmp_tgz" "$tmp_checksums"
         return 1
     fi
 
@@ -5535,6 +5554,7 @@ install_supabase_cli_release() {
         log_error "Supabase CLI: checksum mismatch"
         log_error "  Expected: $expected_sha"
         log_error "  Actual:   ${actual_sha:-<missing>}"
+        cleanup_supabase_cli_release_temp "$tmp_dir" "$tmp_tgz" "$tmp_checksums"
         return 1
     fi
 
@@ -5542,6 +5562,7 @@ install_supabase_cli_release() {
     if ! tar -xzf "$tmp_tgz" -C "$tmp_dir" supabase 2>/dev/null; then
         tar -xzf "$tmp_tgz" -C "$tmp_dir" 2>/dev/null || {
             log_error "Supabase CLI: failed to extract tarball"
+            cleanup_supabase_cli_release_temp "$tmp_dir" "$tmp_tgz" "$tmp_checksums"
             return 1
         }
     fi
@@ -5552,6 +5573,7 @@ install_supabase_cli_release() {
     fi
     if [[ -z "$extracted_bin" ]] || [[ ! -f "$extracted_bin" ]]; then
         log_error "Supabase CLI: binary not found after extract"
+        cleanup_supabase_cli_release_temp "$tmp_dir" "$tmp_tgz" "$tmp_checksums"
         return 1
     fi
 
@@ -5561,16 +5583,16 @@ install_supabase_cli_release() {
     acfs_ensure_primary_bin_dir 2>/dev/null || true
     if ! acfs_install_executable_into_primary_bin "$extracted_bin" "supabase"; then
         log_error "Supabase CLI: failed to install into $ACFS_BIN_DIR"
+        cleanup_supabase_cli_release_temp "$tmp_dir" "$tmp_tgz" "$tmp_checksums"
         return 1
     fi
     if ! run_as_target "$ACFS_BIN_DIR/supabase" --version >/dev/null 2>&1; then
         log_error "Supabase CLI: installed but failed to run"
+        cleanup_supabase_cli_release_temp "$tmp_dir" "$tmp_tgz" "$tmp_checksums"
         return 1
     fi
 
-    # Best-effort cleanup
-    rm -f "$tmp_tgz" "$tmp_checksums" "$extracted_bin" 2>/dev/null || true
-    rmdir "$tmp_dir" 2>/dev/null || true
+    cleanup_supabase_cli_release_temp "$tmp_dir" "$tmp_tgz" "$tmp_checksums"
 
     return 0
 }

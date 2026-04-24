@@ -326,6 +326,17 @@ EOF
     [[ "$output" -ge 10 ]] || fail "expected explicit ACFS_STATE_FILE restores in Ubuntu upgrade exits"
 }
 
+@test "install.sh: Supabase release installer does not use RETURN trap cleanup" {
+    local installer="$PROJECT_ROOT/install.sh"
+
+    run bash -c 'sed -n "/^install_supabase_cli_release()/,/^}/p" "$1" | grep -F "trap "' _ "$installer"
+    assert_failure
+
+    run bash -c 'sed -n "/^install_supabase_cli_release()/,/^}/p" "$1" | grep -F "cleanup_supabase_cli_release_temp \"\$tmp_dir\" \"\$tmp_tgz\" \"\$tmp_checksums\"" | wc -l' _ "$installer"
+    assert_success
+    [[ "$output" -ge 8 ]] || fail "expected explicit Supabase temp cleanup before every installer exit"
+}
+
 @test "update_has_nvm_node: requires executable node binary" {
     local node_bin="$HOME/.nvm/versions/node/v99.0.0/bin"
 
