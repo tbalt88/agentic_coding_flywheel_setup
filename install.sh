@@ -63,17 +63,22 @@ ACFS_REF="${ACFS_REF:-main}"
 ACFS_REF_INPUT="$ACFS_REF"
 # Checksums ref defaults to ACFS_REF_INPUT, but pinned tags/SHAs fall back to main
 # to avoid stale checksums for fast-moving upstream installers.
-ACFS_CHECKSUMS_REF="${ACFS_CHECKSUMS_REF:-}"
+_ACFS_CHECKSUMS_REF_FROM_ENV="${ACFS_CHECKSUMS_REF:-}"
+ACFS_CHECKSUMS_REF_EXPLICIT=false
+ACFS_CHECKSUMS_REF="$_ACFS_CHECKSUMS_REF_FROM_ENV"
 if [[ -z "$ACFS_CHECKSUMS_REF" ]]; then
     if [[ "$ACFS_REF_INPUT" =~ ^v[0-9]+(\.[0-9]+){1,2}([.-][A-Za-z0-9]+)*$ ]] || [[ "$ACFS_REF_INPUT" =~ ^[0-9a-f]{7,40}$ ]]; then
         ACFS_CHECKSUMS_REF="main"
     else
         ACFS_CHECKSUMS_REF="$ACFS_REF_INPUT"
     fi
+else
+    ACFS_CHECKSUMS_REF_EXPLICIT=true
 fi
+unset _ACFS_CHECKSUMS_REF_FROM_ENV
 ACFS_RAW="https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${ACFS_REF}"
 ACFS_CHECKSUMS_RAW="https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${ACFS_CHECKSUMS_REF}"
-export ACFS_RAW ACFS_CHECKSUMS_REF ACFS_CHECKSUMS_RAW ACFS_VERSION
+export ACFS_RAW ACFS_CHECKSUMS_REF ACFS_CHECKSUMS_RAW ACFS_CHECKSUMS_REF_EXPLICIT ACFS_VERSION
 export CHECKSUMS_FILE="${ACFS_CHECKSUMS_YAML:-${CHECKSUMS_FILE:-}}"
 ACFS_COMMIT_SHA=""       # Short SHA for display (12 chars)
 ACFS_COMMIT_SHA_FULL=""  # Full SHA for pinning resume scripts (40 chars)
@@ -89,9 +94,15 @@ if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fi
 
-# Early PATH setup: ensure ~/.local/bin is available for native installers (e.g., Claude Code)
-# This is critical because the Claude native installer puts the binary at ~/.local/bin/claude
-export PATH="$HOME/.local/bin:$PATH"
+# Early PATH setup: ensure ~/.local/bin is available for native installers
+# when HOME is present, without assuming stripped environments already set it.
+_ACFS_EARLY_PATH="${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
+if [[ -n "${HOME:-}" ]]; then
+    export PATH="$HOME/.local/bin:$_ACFS_EARLY_PATH"
+else
+    export PATH="$_ACFS_EARLY_PATH"
+fi
+unset _ACFS_EARLY_PATH
 
 acfs_early_system_binary_path() {
     local name="${1:-}"
@@ -1025,6 +1036,13 @@ generate_resume_hint() {
         resume_args+=(--ref "$ACFS_REF_INPUT")
     fi
 
+    # Preserve an explicit checksum metadata ref across resume commands. The
+    # default checksum ref is derived from --ref, so only include this when it
+    # was deliberately pinned by CLI or environment.
+    if [[ "${ACFS_CHECKSUMS_REF_EXPLICIT:-false}" == "true" && -n "${ACFS_CHECKSUMS_REF:-}" ]]; then
+        resume_args+=(--checksums-ref "$ACFS_CHECKSUMS_REF")
+    fi
+
     # Add skip flags that were used
     [[ "${SKIP_POSTGRES:-false}" == "true" ]] && resume_args+=(--skip-postgres)
     [[ "${SKIP_VAULT:-false}" == "true" ]] && resume_args+=(--skip-vault)
@@ -1183,6 +1201,19 @@ trap '_acfs_signal_handler HUP'  HUP
 # ============================================================
 # Parse arguments
 # ============================================================
+acfs_require_ref_arg_value() {
+    local flag="$1"
+    local value="${2:-}"
+    local example="$3"
+
+    if [[ -z "$value" || "$value" == -* ]]; then
+        log_fatal "$flag requires a ref (e.g., $example)"
+    fi
+    if [[ "$value" == *$'\n'* || "$value" == *$'\r'* ]]; then
+        log_fatal "$flag requires a single-line ref"
+    fi
+}
+
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -1271,17 +1302,17 @@ parse_args() {
                 ;;
             --checksums-ref|--checksums-ref=*)
                 if [[ "$1" == "--checksums-ref" ]]; then
-                    if [[ -z "${2:-}" || "$2" == -* ]]; then
-                        log_fatal "--checksums-ref requires a ref (e.g., --checksums-ref main)"
-                    fi
+                    acfs_require_ref_arg_value "--checksums-ref" "${2:-}" "--checksums-ref main"
                     ACFS_CHECKSUMS_REF="$2"
                     shift 2
                 else
                     ACFS_CHECKSUMS_REF="${1#*=}"
+                    acfs_require_ref_arg_value "--checksums-ref" "$ACFS_CHECKSUMS_REF" "--checksums-ref=main"
                     shift
                 fi
+                ACFS_CHECKSUMS_REF_EXPLICIT=true
                 ACFS_CHECKSUMS_RAW="https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${ACFS_CHECKSUMS_REF}"
-                export ACFS_CHECKSUMS_REF ACFS_CHECKSUMS_RAW
+                export ACFS_CHECKSUMS_REF ACFS_CHECKSUMS_RAW ACFS_CHECKSUMS_REF_EXPLICIT
                 ;;
             --pin-ref|--confirm-ref)
                 # Print resolved SHA and pinned command, then exit
@@ -1293,25 +1324,28 @@ parse_args() {
                 # bind to curl, not bash: ACFS_REF=v1 curl ... | bash
                 # doesn't propagate to the bash process)
                 if [[ "$1" == "--ref" ]]; then
-                    if [[ -z "${2:-}" || "$2" == -* ]]; then
-                        log_fatal "--ref requires a git ref (branch, tag, or SHA)"
-                    fi
+                    acfs_require_ref_arg_value "--ref" "${2:-}" "--ref main"
                     ACFS_REF="$2"
                     shift 2
                 else
                     ACFS_REF="${1#*=}"
+                    acfs_require_ref_arg_value "--ref" "$ACFS_REF" "--ref=main"
                     shift
                 fi
                 ACFS_REF_INPUT="$ACFS_REF"
                 ACFS_RAW="https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${ACFS_REF}"
-                # Recalculate checksums ref for the new ref
-                if [[ "$ACFS_REF" =~ ^v[0-9]+(\.[0-9]+){1,2}([.-][A-Za-z0-9]+)*$ ]] || [[ "$ACFS_REF" =~ ^[0-9a-f]{7,40}$ ]]; then
-                    ACFS_CHECKSUMS_REF="main"
-                else
-                    ACFS_CHECKSUMS_REF="$ACFS_REF"
+                # Recalculate checksums ref for the new install ref unless the
+                # user explicitly pinned checksum metadata with --checksums-ref
+                # or ACFS_CHECKSUMS_REF.
+                if [[ "${ACFS_CHECKSUMS_REF_EXPLICIT:-false}" != "true" ]]; then
+                    if [[ "$ACFS_REF" =~ ^v[0-9]+(\.[0-9]+){1,2}([.-][A-Za-z0-9]+)*$ ]] || [[ "$ACFS_REF" =~ ^[0-9a-f]{7,40}$ ]]; then
+                        ACFS_CHECKSUMS_REF="main"
+                    else
+                        ACFS_CHECKSUMS_REF="$ACFS_REF"
+                    fi
                 fi
                 ACFS_CHECKSUMS_RAW="https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${ACFS_CHECKSUMS_REF}"
-                export ACFS_REF ACFS_RAW ACFS_CHECKSUMS_REF ACFS_CHECKSUMS_RAW
+                export ACFS_REF ACFS_RAW ACFS_CHECKSUMS_REF ACFS_CHECKSUMS_RAW ACFS_CHECKSUMS_REF_EXPLICIT
                 ;;
             --skip-ubuntu-upgrade)
                 # Skip automatic Ubuntu version upgrade (nb4)

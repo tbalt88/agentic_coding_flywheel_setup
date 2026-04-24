@@ -82,12 +82,22 @@ extract_normalize_read_only_modes_function() {
     sed -n '/^normalize_read_only_modes()/,/^}$/p' "$REPO_ROOT/install.sh"
 }
 
+extract_parse_args_function() {
+    sed -n '/^parse_args()/,/^}$/p' "$REPO_ROOT/install.sh"
+}
+
+extract_ref_arg_value_helper() {
+    sed -n '/^acfs_require_ref_arg_value()/,/^}$/p' "$REPO_ROOT/install.sh"
+}
+
 # Actually, let's just define our test environment and source install.sh functions
 setup_test_env() {
     # Reset all variables to defaults
     SCRIPT_DIR=""
     ACFS_COMMIT_SHA_FULL=""
     ACFS_REF_INPUT=""
+    ACFS_CHECKSUMS_REF=""
+    ACFS_CHECKSUMS_REF_EXPLICIT=false
     MODE="vibe"
     SKIP_POSTGRES=false
     SKIP_VAULT=false
@@ -101,6 +111,27 @@ setup_test_env() {
     AUTO_FIX_MODE="prompt"
 }
 
+setup_parse_args_env() {
+    setup_test_env
+    ACFS_REPO_OWNER="Dicklesworthstone"
+    ACFS_REPO_NAME="agentic_coding_flywheel_setup"
+    ACFS_REF="main"
+    ACFS_REF_INPUT="$ACFS_REF"
+    ACFS_RAW="https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${ACFS_REF}"
+    ACFS_CHECKSUMS_REF="main"
+    ACFS_CHECKSUMS_RAW="https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${ACFS_CHECKSUMS_REF}"
+    PIN_REF_MODE=false
+    RESET_STATE_ONLY=false
+    TARGET_UBUNTU_VERSION="25.10"
+    TARGET_UBUNTU_VERSION_EXPLICIT=false
+    LIST_MODULES=false
+    PRINT_PLAN_MODE=false
+    ONLY_MODULES=()
+    ONLY_PHASES=()
+    SKIP_MODULES=()
+    NO_DEPS=false
+}
+
 # Source the generate_resume_hint function
 # shellcheck disable=SC1090
 eval "$(extract_resume_hint_function)"
@@ -108,6 +139,10 @@ eval "$(extract_resume_hint_function)"
 eval "$(extract_print_resume_hint_function)"
 # shellcheck disable=SC1090
 eval "$(extract_normalize_read_only_modes_function)"
+# shellcheck disable=SC1090
+eval "$(extract_ref_arg_value_helper)"
+# shellcheck disable=SC1090
+eval "$(extract_parse_args_function)"
 
 STATE_SET_RESUME_HINT_CALLS=0
 STATE_SET_RESUME_HINT_VALUE=""
@@ -236,6 +271,53 @@ test_custom_ref_shell_escaped() {
 
     if [[ "$result" != *"--ref bad\\;touch"* ]]; then
         log "  Expected --ref value to be escaped, got: $result"
+        return 1
+    fi
+
+    return 0
+}
+
+test_checksums_ref_survives_ref_parse_order() {
+    setup_parse_args_env
+    parse_args --checksums-ref explicit-checksums --ref feature-branch --print-plan
+
+    if [[ "$ACFS_CHECKSUMS_REF" != "explicit-checksums" ]]; then
+        log "  Expected explicit checksums ref to survive later --ref, got: $ACFS_CHECKSUMS_REF"
+        return 1
+    fi
+    if [[ "$ACFS_CHECKSUMS_REF_EXPLICIT" != "true" ]]; then
+        log "  Expected ACFS_CHECKSUMS_REF_EXPLICIT=true, got: $ACFS_CHECKSUMS_REF_EXPLICIT"
+        return 1
+    fi
+
+    setup_parse_args_env
+    parse_args --ref feature-branch --checksums-ref explicit-checksums --print-plan
+
+    if [[ "$ACFS_CHECKSUMS_REF" != "explicit-checksums" ]]; then
+        log "  Expected explicit checksums ref to apply after --ref, got: $ACFS_CHECKSUMS_REF"
+        return 1
+    fi
+
+    return 0
+}
+
+test_custom_checksums_ref_resume_hint() {
+    setup_test_env
+    SCRIPT_DIR="/some/local/path"
+    ACFS_REF_INPUT="feature-branch"
+    ACFS_CHECKSUMS_REF='checksums;touch /tmp/acfs-pwned #'
+    ACFS_CHECKSUMS_REF_EXPLICIT=true
+
+    local result
+    result=$(generate_resume_hint "" "")
+
+    if [[ "$result" != *"--checksums-ref checksums\\;touch"* ]]; then
+        log "  Expected shell-escaped --checksums-ref in resume hint, got: $result"
+        return 1
+    fi
+
+    if [[ "$result" == *"checksums;touch"* ]]; then
+        log "  Expected checksum ref metacharacters to be escaped, got: $result"
         return 1
     fi
 
@@ -539,6 +621,8 @@ main() {
     run_test test_pinned_commit_sha
     run_test test_custom_ref
     run_test test_custom_ref_shell_escaped
+    run_test test_checksums_ref_survives_ref_parse_order
+    run_test test_custom_checksums_ref_resume_hint
     run_test test_safe_mode
     run_test test_skip_flags
     run_test test_all_skip_flags

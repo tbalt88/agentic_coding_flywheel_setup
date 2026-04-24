@@ -298,6 +298,23 @@ EOF
     assert_success
 }
 
+@test "install.sh: read-only module listing tolerates unset HOME" {
+    run env -i PATH="/usr/bin:/bin" bash "$PROJECT_ROOT/install.sh" --list-modules
+    assert_success
+    refute_output --partial "unbound variable"
+    assert_output --partial "base.filesystem"
+}
+
+@test "install.sh: ref flags reject empty equals-form values" {
+    run env -i PATH="/usr/bin:/bin" bash "$PROJECT_ROOT/install.sh" --print-plan --ref=
+    assert_failure
+    assert_output --partial "--ref requires a ref"
+
+    run env -i PATH="/usr/bin:/bin" bash "$PROJECT_ROOT/install.sh" --print-plan --checksums-ref=
+    assert_failure
+    assert_output --partial "--checksums-ref requires a ref"
+}
+
 @test "update_has_nvm_node: requires executable node binary" {
     local node_bin="$HOME/.nvm/versions/node/v99.0.0/bin"
 
