@@ -171,6 +171,35 @@ else
     fail "support.sh sourcing preserves caller env and shell flags" "$source_output"
 fi
 
+if command -v jq >/dev/null 2>&1; then
+    env_output=""
+    if env_output=$(env -i PATH="/usr/bin:/bin" HOME="$TEST_DIR/no-shell-home" SUPPORT_SH="$SUPPORT_SH" TEST_BUNDLE="$TEST_DIR/no-shell-bundle" bash -lc '
+        set -euo pipefail
+        unset SHELL
+        mkdir -p "$HOME" "$TEST_BUNDLE"
+        log_step() { :; }
+        log_section() { :; }
+        log_detail() { :; }
+        log_success() { :; }
+        log_warn() { :; }
+        log_error() { :; }
+        source "$SUPPORT_SH"
+        _SUPPORT_CURRENT_HOME="$HOME"
+        _SUPPORT_ACFS_HOME=""
+        SUPPORT_TARGET_HOME="$HOME"
+        SUPPORT_TARGET_USER="tester"
+        BUNDLE_FILES=()
+        capture_env_summary "$TEST_BUNDLE"
+        jq -r ".shell" "$TEST_BUNDLE/environment.json"
+    ' 2>&1); then
+        assert_equals "environment summary tolerates unset SHELL" "$env_output" "unknown"
+    else
+        fail "environment summary tolerates unset SHELL" "$env_output"
+    fi
+else
+    pass "environment summary tolerates unset SHELL (jq unavailable skip)"
+fi
+
 # ============================================================
 # Tests: API key patterns
 # ============================================================

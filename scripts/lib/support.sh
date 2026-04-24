@@ -976,7 +976,7 @@ capture_env_summary() {
         --arg home "$support_home" \
         --arg acfs_home "$_SUPPORT_ACFS_HOME" \
         --arg acfs_version "$acfs_version" \
-        --arg shell "$SHELL" \
+        --arg shell "${SHELL:-unknown}" \
         --argjson uptime_seconds "$(cat /proc/uptime 2>/dev/null | awk '{printf "%d", $1}' || echo 0)" \
         --argjson mem_total_kb "$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}' || echo 0)" \
         --argjson mem_available_kb "$(grep MemAvailable /proc/meminfo 2>/dev/null | awk '{print $2}' || echo 0)" \
@@ -1019,7 +1019,7 @@ write_manifest() {
     record_bundle_file "manifest.json"
 
     local acfs_version="unknown"
-    if [[ -f "$_SUPPORT_ACFS_HOME/VERSION" ]]; then
+    if [[ -n "$_SUPPORT_ACFS_HOME" ]] && [[ -f "$_SUPPORT_ACFS_HOME/VERSION" ]]; then
         acfs_version=$(cat "$_SUPPORT_ACFS_HOME/VERSION" 2>/dev/null) || acfs_version="unknown"
     fi
 
