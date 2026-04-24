@@ -436,6 +436,13 @@ state_init() {
     local now
     now="$(date -Iseconds)"
 
+    local state_version="${ACFS_VERSION:-unknown}"
+    local state_target_user="${TARGET_USER:-}"
+    if [[ -z "$state_target_user" ]]; then
+        state_target_user="$(state_resolve_current_user 2>/dev/null || true)"
+    fi
+    state_target_user="${state_target_user:-unknown}"
+
     # Normalize boolean values for JSON
     local skip_pg="false"; [[ "${SKIP_POSTGRES:-false}" == "true" ]] && skip_pg="true"
     local skip_v="false"; [[ "${SKIP_VAULT:-false}" == "true" ]] && skip_v="true"
@@ -445,8 +452,8 @@ state_init() {
     if command -v jq &>/dev/null; then
         initial_state=$(jq -n \
             --argjson schema_version "$ACFS_STATE_SCHEMA_VERSION" \
-            --arg ver "$ACFS_VERSION" \
-            --arg user "$TARGET_USER" \
+            --arg ver "$state_version" \
+            --arg user "$state_target_user" \
             --arg home "$resolved_target_home" \
             --arg bin_dir "${ACFS_BIN_DIR:-$resolved_target_home/.local/bin}" \
             --arg ts "$now" \
@@ -481,8 +488,8 @@ state_init() {
         initial_state=$(cat <<EOF
 {
   "schema_version": $ACFS_STATE_SCHEMA_VERSION,
-  "version": "$ACFS_VERSION",
-  "target_user": "$TARGET_USER",
+  "version": "$state_version",
+  "target_user": "$state_target_user",
   "target_home": "$resolved_target_home",
   "bin_dir": "${ACFS_BIN_DIR:-$resolved_target_home/.local/bin}",
   "started_at": "$now",
@@ -691,8 +698,10 @@ state_write_atomic() {
 # Usage: _state_acquire_lock
 # Returns: 0 on success, 1 on timeout/failure
 _state_acquire_lock() {
-    # If already locked by this process, just return success
+    # If already locked by this process, track nested callers so an inner
+    # state_save cannot release the outer caller's lock early.
     if [[ "${_ACFS_STATE_LOCKED:-}" == "true" ]]; then
+        _ACFS_STATE_LOCK_DEPTH=$(( ${_ACFS_STATE_LOCK_DEPTH:-1} + 1 ))
         return 0
     fi
 
@@ -722,22 +731,36 @@ _state_acquire_lock() {
         fi
     fi
 
-    # Try to acquire lock with a 5-second timeout
-    if ! flock -w 5 "${ACFS_LOCK_FD}" 2>/dev/null; then
+    local lock_timeout="${ACFS_STATE_LOCK_TIMEOUT:-30}"
+    if [[ ! "$lock_timeout" =~ ^[0-9]+$ ]] || [[ "$lock_timeout" -lt 1 ]]; then
+        lock_timeout=30
+    fi
+
+    # State writes can briefly queue behind durable atomic writes. Wait long
+    # enough to preserve resume metadata instead of dropping contended updates.
+    if ! flock -w "$lock_timeout" "${ACFS_LOCK_FD}" 2>/dev/null; then
         return 1
     fi
 
     _ACFS_STATE_LOCKED=true
+    _ACFS_STATE_LOCK_DEPTH=1
     return 0
 }
 
 # Release the lock
 # Usage: _state_release_lock
 _state_release_lock() {
+    local lock_depth="${_ACFS_STATE_LOCK_DEPTH:-0}"
+    if [[ "$lock_depth" -gt 1 ]]; then
+        _ACFS_STATE_LOCK_DEPTH=$(( lock_depth - 1 ))
+        return 0
+    fi
+
     if [[ -n "${ACFS_LOCK_FD:-}" ]]; then
         flock -u "${ACFS_LOCK_FD}" 2>/dev/null || true
     fi
     _ACFS_STATE_LOCKED=false
+    _ACFS_STATE_LOCK_DEPTH=0
 }
 
 # Mark state as interrupted by a signal (SIGTERM, SIGINT, SIGHUP).
@@ -1252,17 +1275,7 @@ state_upgrade_init() {
     local now
     now="$(date -Iseconds)"
 
-    # Load current state
-    local state
-    state=$(state_load) || return 1
-
-    # Use jq --arg to safely escape all variables (prevent JSON injection)
-    local new_state
-    new_state=$(echo "$state" | jq \
-        --arg now "$now" \
-        --arg orig "$original_version" \
-        --arg target "$target_version" \
-        --argjson path "$upgrade_path" \
+    _state_update_with_jq \
         '
         .ubuntu_upgrade = {
             "enabled": true,
@@ -1277,9 +1290,11 @@ state_upgrade_init() {
             "resume_after_reboot": false,
             "last_error": null
         }
-    ') || return 1
-
-    state_save "$new_state"
+        ' \
+        --arg now "$now" \
+        --arg orig "$original_version" \
+        --arg target "$target_version" \
+        --argjson path "$upgrade_path"
 }
 
 # Mark current upgrade step as starting
@@ -1295,16 +1310,7 @@ state_upgrade_start() {
     local now
     now="$(date -Iseconds)"
 
-    # Load current state
-    local state
-    state=$(state_load) || return 1
-
-    # Use jq --arg to safely escape all variables (prevent JSON injection)
-    local new_state
-    new_state=$(echo "$state" | jq \
-        --arg now "$now" \
-        --arg from "$from_version" \
-        --arg to "$to_version" \
+    _state_update_with_jq \
         '
         .ubuntu_upgrade.current_stage = "upgrading" |
         .ubuntu_upgrade.current_upgrade = {
@@ -1312,9 +1318,10 @@ state_upgrade_start() {
             "to": $to,
             "started_at": $now
         }
-    ') || return 1
-
-    state_save "$new_state"
+        ' \
+        --arg now "$now" \
+        --arg from "$from_version" \
+        --arg to "$to_version"
 }
 
 # Mark current upgrade step as completed
@@ -1326,33 +1333,22 @@ state_upgrade_complete() {
         return 1
     fi
 
-    local state
-    state=$(state_load) || return 1
-
     local now
     now="$(date -Iseconds)"
 
-    # Move current_upgrade to completed_upgrades
-    local from_version
-    from_version=$(echo "$state" | jq -r '.ubuntu_upgrade.current_upgrade.from // ""')
-
-    # Use jq --arg to safely escape all variables (prevent JSON injection)
-    local new_state
-    new_state=$(echo "$state" | jq \
-        --arg now "$now" \
-        --arg from "$from_version" \
-        --arg to "$to_version" \
+    _state_update_with_jq \
         '
-        .ubuntu_upgrade.completed_upgrades += [{
+        (.ubuntu_upgrade.current_upgrade.from // "") as $from |
+        .ubuntu_upgrade.completed_upgrades = ((.ubuntu_upgrade.completed_upgrades // []) + [{
             "from": $from,
             "to": $to,
             "completed_at": $now
-        }] |
+        }]) |
         .ubuntu_upgrade.current_upgrade = null |
         .ubuntu_upgrade.current_stage = "step_complete"
-    ') || return 1
-
-    state_save "$new_state"
+        ' \
+        --arg now "$now" \
+        --arg to "$to_version"
 }
 
 # Mark that system needs reboot before continuing
@@ -1455,19 +1451,12 @@ state_upgrade_set_error() {
         return 1
     fi
 
-    # Use jq's --arg for proper JSON escaping (handles quotes, backslashes, newlines)
-    local state
-    state=$(state_load) || return 1
-
-    local new_state
-    if ! new_state=$(echo "$state" | jq --arg err "$error_msg" '
+    _state_update_with_jq \
+        '
         .ubuntu_upgrade.last_error = $err |
         .ubuntu_upgrade.current_stage = "error"
-    '); then
-        return 1
-    fi
-
-    state_save "$new_state"
+        ' \
+        --arg err "$error_msg"
 }
 
 # Mark upgrade sequence as fully completed
@@ -1480,12 +1469,14 @@ state_upgrade_mark_complete() {
     local now
     now="$(date -Iseconds)"
 
-    state_update "
-        .ubuntu_upgrade.current_stage = \"completed\" |
-        .ubuntu_upgrade.completed_at = \"$now\" |
+    _state_update_with_jq \
+        '
+        .ubuntu_upgrade.current_stage = "completed" |
+        .ubuntu_upgrade.completed_at = $now |
         .ubuntu_upgrade.needs_reboot = false |
         .ubuntu_upgrade.resume_after_reboot = false
-    "
+        ' \
+        --arg now "$now"
 }
 
 # Clean up upgrade state after completion
@@ -1657,12 +1648,11 @@ state_save() {
     return $status
 }
 
-# Update specific fields in state
-# Usage: state_update <jq_expression>
-# Example: state_update '.current_phase = "cli_tools"'
-# Returns: 0 on success, 1 on failure
-state_update() {
+# Apply a jq mutation while holding the state lock across the full
+# read-modify-write cycle. Callers may pass jq arguments after the filter.
+_state_update_with_jq() {
     local jq_expr="$1"
+    shift
 
     if ! command -v jq &>/dev/null; then
         echo "Error: jq is required for state_update" >&2
@@ -1673,6 +1663,12 @@ state_update() {
         return 1
     fi
 
+    local state_file
+    state_file="$(state_get_file)" || {
+        _state_release_lock
+        return 1
+    }
+
     local state
     if ! state=$(state_load); then
         _state_release_lock
@@ -1680,15 +1676,29 @@ state_update() {
     fi
 
     local new_state
-    if ! new_state=$(echo "$state" | jq "$jq_expr"); then
+    if ! new_state=$(printf '%s' "$state" | jq "$@" "$jq_expr"); then
         _state_release_lock
         return 1
     fi
 
-    local save_result=0
-    state_save "$new_state" || save_result=$?
+    local status=0
+    if ! state_write_atomic "$state_file" "$new_state"; then
+        declare -f log_error &>/dev/null && log_error "state_update: state_write_atomic failed"
+        status=1
+    fi
+
     _state_release_lock
-    return $save_result
+    return $status
+}
+
+# Update specific fields in state
+# Usage: state_update <jq_expression>
+# Example: state_update '.current_phase = "cli_tools"'
+# Returns: 0 on success, 1 on failure
+state_update() {
+    local jq_expr="$1"
+
+    _state_update_with_jq "$jq_expr"
 }
 
 # Persist the current resume hint while preserving the normal atomic write and

@@ -25,6 +25,20 @@ teardown() {
     assert_output --partial '"completed_phases": []'
 }
 
+@test "state: init tolerates missing ACFS_VERSION under nounset" {
+    local state_root
+    state_root=$(create_temp_dir)
+
+    run env -i PATH="$PATH" HOME="$state_root/home" ACFS_HOME="$state_root/acfs" ACFS_STATE_FILE="$state_root/acfs/state.json" bash -u -c '
+        mkdir -p "$HOME" "$ACFS_HOME"
+        source "$1"
+        state_init
+        jq -r .version "$ACFS_STATE_FILE"
+    ' _ "$PROJECT_ROOT/scripts/lib/state.sh"
+    assert_success
+    assert_output "unknown"
+}
+
 @test "state: save and load round trip" {
     state_init
     
@@ -93,6 +107,60 @@ teardown() {
     
     run state_get ".new_field"
     assert_output "exists"
+}
+
+@test "state: nested state_save keeps outer lock held" {
+    state_init
+
+    _state_acquire_lock
+    state_save '{"nested": "value"}'
+
+    [[ "${_ACFS_STATE_LOCKED:-}" == "true" ]]
+    [[ "${_ACFS_STATE_LOCK_DEPTH:-0}" -eq 1 ]]
+
+    _state_release_lock
+    [[ "${_ACFS_STATE_LOCKED:-}" == "false" ]]
+    [[ "${_ACFS_STATE_LOCK_DEPTH:-0}" -eq 0 ]]
+
+    run state_get ".nested"
+    assert_output "value"
+}
+
+@test "state: ubuntu upgrade helpers escape dynamic values" {
+    state_init
+
+    run state_upgrade_init '24.04"; halt' '25.10"; halt' '["25.04","25.10"]'
+    assert_success
+
+    run state_upgrade_start '24.04"; from' '25.04"; to'
+    assert_success
+
+    run state_upgrade_complete '25.04"; done'
+    assert_success
+
+    run state_get ".ubuntu_upgrade.original_version"
+    assert_output '24.04"; halt'
+
+    run state_get ".ubuntu_upgrade.target_version"
+    assert_output '25.10"; halt'
+
+    run state_get ".ubuntu_upgrade.completed_upgrades[0].from"
+    assert_output '24.04"; from'
+
+    run state_get ".ubuntu_upgrade.completed_upgrades[0].to"
+    assert_output '25.04"; done'
+
+    run state_upgrade_set_error 'failed "quoted" upgrade'
+    assert_success
+
+    run state_get ".ubuntu_upgrade.last_error"
+    assert_output 'failed "quoted" upgrade'
+
+    run state_upgrade_mark_complete
+    assert_success
+
+    run state_get ".ubuntu_upgrade.current_stage"
+    assert_output "completed"
 }
 
 @test "state: get file prefers passwd-resolved target home when ACFS_HOME unset" {
