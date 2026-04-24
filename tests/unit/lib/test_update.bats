@@ -7590,6 +7590,30 @@ EOF
     assert_output --partial "arg=e82922dc1e3fad90e4b4fc145853f9c30b821c51ef4496a16b4f93d39da6b01a"
 }
 
+@test "update fsfs version resolver falls back to release redirect" {
+    unset ACFS_FSFS_VERSION
+    curl() {
+        case "$*" in
+            *api.github.com*) return 22 ;;
+            *releases/latest*) printf '%s\n' "https://github.com/Dicklesworthstone/frankensearch/releases/tag/v1.2.5" ;;
+            *) return 1 ;;
+        esac
+    }
+
+    run update_resolve_fsfs_latest_version
+
+    assert_success
+    assert_output "v1.2.5"
+}
+
+@test "update fsfs version resolver rejects malformed override" {
+    export ACFS_FSFS_VERSION="../v1.2.5"
+
+    run update_resolve_fsfs_latest_version
+
+    assert_failure
+}
+
 @test "agents verified installer commands shell-quote dynamic command parts" {
     local agents_lib="$PROJECT_ROOT/scripts/lib/agents.sh"
 

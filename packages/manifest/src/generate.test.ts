@@ -310,6 +310,8 @@ describe('Generated verified installer args', () => {
     expect(stackContent).toContain('local -a fsfs_installer_args=(\'--easy-mode\')');
     expect(stackContent).toContain('fsfs_target="x86_64-unknown-linux-musl"');
     expect(stackContent).toContain('fsfs_target="aarch64-unknown-linux-musl"');
+    expect(stackContent).toContain("https://github.com/Dicklesworthstone/frankensearch/releases/latest");
+    expect(stackContent).toContain('[[ ! "$fsfs_version" =~ ^v[0-9][A-Za-z0-9._-]*$ ]]');
     expect(stackContent).toContain('fsfs-lite-${fsfs_version_bare}-${fsfs_target}.tar.xz');
     expect(stackContent).toContain('awk \'NR == 1 { print $1 }\'');
     expect(stackContent).toContain('--checksum "${fsfs_checksum,,}"');

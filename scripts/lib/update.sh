@@ -2671,19 +2671,34 @@ update_fsfs_linux_target_triple() {
     esac
 }
 
+update_is_valid_fsfs_version() {
+    local version="${1:-}"
+    [[ "$version" =~ ^v[0-9][A-Za-z0-9._-]*$ ]]
+}
+
 update_resolve_fsfs_latest_version() {
     if [[ -n "${ACFS_FSFS_VERSION:-}" ]]; then
+        update_is_valid_fsfs_version "$ACFS_FSFS_VERSION" || return 1
         printf '%s\n' "$ACFS_FSFS_VERSION"
         return 0
     fi
 
     local latest_url="https://api.github.com/repos/Dicklesworthstone/frankensearch/releases/latest"
+    local redirect_url="https://github.com/Dicklesworthstone/frankensearch/releases/latest"
     local tag=""
     tag="$(curl -fsSL --connect-timeout 30 --max-time 60 -H "Accept: application/vnd.github.v3+json" "$latest_url" 2>/dev/null \
         | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
         | head -n 1 || true)"
 
-    [[ -n "$tag" ]] || return 1
+    if update_is_valid_fsfs_version "$tag"; then
+        printf '%s\n' "$tag"
+        return 0
+    fi
+
+    tag="$(curl -fsSL --connect-timeout 30 --max-time 60 -o /dev/null -w '%{url_effective}' "$redirect_url" 2>/dev/null \
+        | sed -E 's|.*/tag/||' || true)"
+
+    update_is_valid_fsfs_version "$tag" || return 1
     printf '%s\n' "$tag"
 }
 
