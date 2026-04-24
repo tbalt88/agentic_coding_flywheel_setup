@@ -572,6 +572,34 @@ describe('authChecks', () => {
     expect(checks.checkVercel()).toEqual({ authenticated: false });
   });
 
+  test('checkVercel uses the last shell config assignment for token values', () => {
+    const configPath = path.join(HOME, '.zshrc.local');
+    const checks = createAuthChecks(
+      makeDeps({
+        commandExists: (command) => command === 'vercel',
+        existsSync: (filePath) => filePath === configPath,
+        readFileSync: () =>
+          ['export VERCEL_TOKEN=your_vercel_token', 'export VERCEL_TOKEN=vercel-token'].join('\n'),
+      }),
+    );
+
+    expect(checks.checkVercel()).toEqual({ authenticated: true, details: 'via VERCEL_TOKEN' });
+  });
+
+  test('checkVercel rejects shell config tokens overwritten by placeholders', () => {
+    const configPath = path.join(HOME, '.zshrc.local');
+    const checks = createAuthChecks(
+      makeDeps({
+        commandExists: (command) => command === 'vercel',
+        existsSync: (filePath) => filePath === configPath,
+        readFileSync: () =>
+          ['export VERCEL_TOKEN=vercel-token', 'export VERCEL_TOKEN=your_vercel_token'].join('\n'),
+      }),
+    );
+
+    expect(checks.checkVercel()).toEqual({ authenticated: false });
+  });
+
   test('checkSupabase returns authenticated with access token file', () => {
     const tokenPath = path.join(HOME, '.supabase', 'access-token');
     const checks = createAuthChecks(

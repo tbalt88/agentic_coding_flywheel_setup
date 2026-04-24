@@ -1411,18 +1411,21 @@ read_configured_var_from_file() {
 
     local line=""
     local regex="^[[:space:]]*(export[[:space:]]+)?${var_name}[[:space:]]*=(.*)$"
+    local configured_value=""
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ "$line" =~ ^[[:space:]]*# ]] && continue
         if [[ "$line" =~ $regex ]]; then
             local value="${BASH_REMATCH[2]}"
             value="$(strip_shell_inline_comment "$value")"
             value="$(normalize_config_value "$value")"
-            if [[ -n "${value//[[:space:]]/}" ]]; then
-                printf '%s\n' "$value"
-                return 0
-            fi
+            configured_value="$value"
         fi
     done < "$file_path"
+
+    if [[ -n "${configured_value//[[:space:]]/}" ]]; then
+        printf '%s\n' "$configured_value"
+        return 0
+    fi
 
     return 1
 }

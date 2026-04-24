@@ -160,18 +160,24 @@ function readConfiguredValueFromFile(
 ): string | null {
   try {
     const contents = readFileSync(filePath, 'utf-8');
-    const match = contents.match(
-      new RegExp(
-        `^\\s*(?:export\\s+)?${escapeRegex(variableName)}\\s*=\\s*(.+?)\\s*$`,
-        'm',
-      ),
+    const assignmentRegex = new RegExp(
+      `^\\s*(?:export\\s+)?${escapeRegex(variableName)}\\s*=\\s*(.*?)\\s*$`,
     );
-    if (!match?.[1]) {
-      return null;
+    let configuredValue: string | null = null;
+
+    for (const line of contents.split(/\r?\n/)) {
+      const match = line.match(assignmentRegex);
+      if (!match) {
+        continue;
+      }
+
+      const [, rawValue = ''] = match;
+      const value = stripShellInlineComment(rawValue);
+      const normalized = normalizeConfigValue(value);
+      configuredValue = normalized || null;
     }
-    const value = stripShellInlineComment(match[1].trim());
-    const normalized = normalizeConfigValue(value);
-    return normalized || null;
+
+    return configuredValue;
   } catch {
     return null;
   }
