@@ -1097,6 +1097,26 @@ redact_file() {
         -e 's/"([A-Za-z][A-Za-z0-9]*(ApiKey|APIKey|ApiSecret|SecretKey|AccessKey|AccessToken|RefreshToken|AuthToken|ClientSecret|PrivateKey|Secret|Token))"[ ]*:[ ]*"([^"<>]{8,})"/"\1": "<REDACTED:generic_secret>"/g' \
         "$file" 2>/dev/null || return 0
 
+    # Shell-style quoted secrets can contain spaces. Redact the full quoted
+    # value before the unquoted catch-alls below see only the first word.
+    sed -E -i \
+        -e 's/(api_key|API_KEY|ApiKey|api_secret|API_SECRET|secret_key|SECRET_KEY|access_token|ACCESS_TOKEN|refresh_token|REFRESH_TOKEN|auth_token|AUTH_TOKEN|client_secret|CLIENT_SECRET|private_key|PRIVATE_KEY)([[:space:]]*[=:][[:space:]]*)"([^"<>]{8,})"/\1\2"<REDACTED:\1>"/g' \
+        -e 's/(password|PASSWORD|passwd|PASSWD)([[:space:]]*[=:][[:space:]]*)"([^"<>]{4,})"/\1\2"<REDACTED:password>"/g' \
+        -e 's/([A-Za-z][A-Za-z0-9]*[_-]+[A-Za-z0-9_-]*(password|PASSWORD|passwd|PASSWD))([[:space:]]*[=:][[:space:]]*)"([^"<>]{4,})"/\1\3"<REDACTED:password>"/g' \
+        -e 's/([A-Za-z][A-Za-z0-9]*[_-]+[A-Za-z0-9_-]*(api[_-]?key|API[_-]?KEY|ApiKey|api[_-]?secret|API[_-]?SECRET|secret[_-]?key|SECRET[_-]?KEY|access[_-]?key|ACCESS[_-]?KEY|access[_-]?token|ACCESS[_-]?TOKEN|refresh[_-]?token|REFRESH[_-]?TOKEN|auth[_-]?token|AUTH[_-]?TOKEN|client[_-]?secret|CLIENT[_-]?SECRET|private[_-]?key|PRIVATE[_-]?KEY|secret|SECRET|token|TOKEN))([[:space:]]*[=:][[:space:]]*)"([^"<>]{8,})"/\1\3"<REDACTED:generic_secret>"/g' \
+        -e 's/([A-Za-z][A-Za-z0-9]*(Password|Passwd))([[:space:]]*[=:][[:space:]]*)"([^"<>]{4,})"/\1\3"<REDACTED:password>"/g' \
+        -e 's/([A-Za-z][A-Za-z0-9]*(ApiKey|APIKey|ApiSecret|SecretKey|AccessKey|AccessToken|RefreshToken|AuthToken|ClientSecret|PrivateKey|Secret|Token))([[:space:]]*[=:][[:space:]]*)"([^"<>]{8,})"/\1\3"<REDACTED:generic_secret>"/g' \
+        "$file" 2>/dev/null || return 0
+
+    sed -E -i \
+        -e "s/(api_key|API_KEY|ApiKey|api_secret|API_SECRET|secret_key|SECRET_KEY|access_token|ACCESS_TOKEN|refresh_token|REFRESH_TOKEN|auth_token|AUTH_TOKEN|client_secret|CLIENT_SECRET|private_key|PRIVATE_KEY)([[:space:]]*[=:][[:space:]]*)'([^'<>]{8,})'/\1\2'<REDACTED:\1>'/g" \
+        -e "s/(password|PASSWORD|passwd|PASSWD)([[:space:]]*[=:][[:space:]]*)'([^'<>]{4,})'/\1\2'<REDACTED:password>'/g" \
+        -e "s/([A-Za-z][A-Za-z0-9]*[_-]+[A-Za-z0-9_-]*(password|PASSWORD|passwd|PASSWD))([[:space:]]*[=:][[:space:]]*)'([^'<>]{4,})'/\1\3'<REDACTED:password>'/g" \
+        -e "s/([A-Za-z][A-Za-z0-9]*[_-]+[A-Za-z0-9_-]*(api[_-]?key|API[_-]?KEY|ApiKey|api[_-]?secret|API[_-]?SECRET|secret[_-]?key|SECRET[_-]?KEY|access[_-]?key|ACCESS[_-]?KEY|access[_-]?token|ACCESS[_-]?TOKEN|refresh[_-]?token|REFRESH[_-]?TOKEN|auth[_-]?token|AUTH[_-]?TOKEN|client[_-]?secret|CLIENT[_-]?SECRET|private[_-]?key|PRIVATE[_-]?KEY|secret|SECRET|token|TOKEN))([[:space:]]*[=:][[:space:]]*)'([^'<>]{8,})'/\1\3'<REDACTED:generic_secret>'/g" \
+        -e "s/([A-Za-z][A-Za-z0-9]*(Password|Passwd))([[:space:]]*[=:][[:space:]]*)'([^'<>]{4,})'/\1\3'<REDACTED:password>'/g" \
+        -e "s/([A-Za-z][A-Za-z0-9]*(ApiKey|APIKey|ApiSecret|SecretKey|AccessKey|AccessToken|RefreshToken|AuthToken|ClientSecret|PrivateKey|Secret|Token))([[:space:]]*[=:][[:space:]]*)'([^'<>]{8,})'/\1\3'<REDACTED:generic_secret>'/g" \
+        "$file" 2>/dev/null || return 0
+
     # Generic key=value secrets (case-insensitive would need per-line processing;
     # instead match common casings)
     sed -E -i \

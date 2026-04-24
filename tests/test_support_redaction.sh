@@ -318,6 +318,16 @@ assert_contains "CamelCase JSON API key redacted" "$result" '"geminiApiKey": "<R
 assert_contains "CamelCase JSON password redacted" "$result" '"dbPassword": "<REDACTED:password>"'
 assert_contains "CamelCase JSON metric preserved" "$result" '"tokenCount":"123456789"'
 
+result=$(redact_and_read "quoted_env_secrets.txt" "PASSWORD='correct horse battery staple'
+VERCEL_TOKEN = \"quoted token value 12345\"
+client_secret = 'quoted client secret value'")
+assert_contains "Single-quoted password with spaces redacted" "$result" "PASSWORD='<REDACTED:password>'"
+assert_contains "Double-quoted token with spaces redacted" "$result" "VERCEL_TOKEN = \"<REDACTED:generic_secret>\""
+assert_contains "Single-quoted client secret with spaces redacted" "$result" "client_secret = '<REDACTED:client_secret>'"
+assert_not_contains "Quoted password value removed" "$result" "correct horse battery staple"
+assert_not_contains "Quoted token value removed" "$result" "quoted token value 12345"
+assert_not_contains "Quoted client secret value removed" "$result" "quoted client secret value"
+
 # ============================================================
 # Tests: Safe values NOT redacted (false positive prevention)
 # ============================================================
