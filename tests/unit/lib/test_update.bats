@@ -756,6 +756,39 @@ EOF
     run grep -F 'update_run_in_target_context "" "$cargo_bin" install --git https://github.com/Dicklesworthstone/meta_skill --force' "$update"
     assert_success
 
+    run grep -F 'run_cmd "Update $tool" update_run_in_target_context "" "$cargo_bin" install "$tool" --locked --force' "$update"
+    assert_success
+
+    run grep -F 'run_cmd "Update $tool" "$cargo_bin" install "$tool" --locked --force' "$update"
+    assert_failure
+
+    run grep -F 'bun_runtime_home="$(update_runtime_shell_home 2>/dev/null || true)"' "$update"
+    assert_success
+
+    run grep -F 'output=$(update_run_in_target_context "" "$bun_bin" install -g --trust "$pkg" 2>&1)' "$update"
+    assert_success
+
+    run grep -F 'output=$("$bun_bin" install -g --trust "$pkg" 2>&1)' "$update"
+    assert_failure
+
+    run grep -F 'run_cmd_bun_with_retry "Gemini CLI" update_run_in_target_context "" "$bun_bin" install -g --trust @google/gemini-cli@latest' "$update"
+    assert_success
+
+    run grep -F 'run_cmd_bun_with_retry "Wrangler (Cloudflare)" update_run_in_target_context "" "$bun_bin" install -g --trust wrangler@latest' "$update"
+    assert_success
+
+    run grep -F 'run_cmd_bun_with_retry "Vercel CLI" update_run_in_target_context "" "$bun_bin" install -g --trust vercel@latest' "$update"
+    assert_success
+
+    run grep -F 'run_cmd_bun_with_retry "Gemini CLI" "$bun_bin" install -g --trust @google/gemini-cli@latest' "$update"
+    assert_failure
+
+    run grep -F 'run_cmd_bun_with_retry "Wrangler (Cloudflare)" "$bun_bin" install -g --trust wrangler@latest' "$update"
+    assert_failure
+
+    run grep -F 'run_cmd_bun_with_retry "Vercel CLI" "$bun_bin" install -g --trust vercel@latest' "$update"
+    assert_failure
+
     run grep -F 'run_cmd "Supabase CLI" update_run_in_target_context "ACFS_PRIMARY_BIN_DIR=$supabase_primary_bin" bash -c "$(supabase_release_update_script)"' "$update"
     assert_success
 

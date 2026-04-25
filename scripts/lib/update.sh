@@ -1338,9 +1338,16 @@ run_cmd_bun_with_retry() {
                 printf "  ${YELLOW}[retry]${NC} %s (attempt %d/%d)\n" "$desc" "$attempt" "$max_attempts"
             fi
 
-            # Clear bun's tmp cache to avoid stale locks
-            local bun_cache_tmp="${HOME}/.bun/install/cache/.tmp"
-            if [[ -d "$bun_cache_tmp" ]]; then
+            # Clear bun's tmp cache to avoid stale locks in the target runtime home.
+            local bun_runtime_home=""
+            local bun_cache_tmp=""
+            bun_runtime_home="$(update_runtime_shell_home 2>/dev/null || true)"
+            if [[ -n "$bun_runtime_home" ]]; then
+                bun_cache_tmp="$bun_runtime_home/.bun/install/cache/.tmp"
+            elif [[ -n "${HOME:-}" ]]; then
+                bun_cache_tmp="$HOME/.bun/install/cache/.tmp"
+            fi
+            if [[ -n "$bun_cache_tmp" && -d "$bun_cache_tmp" ]]; then
                 rm -rf "$bun_cache_tmp" 2>/dev/null || true
                 log_to_file "Cleared bun cache .tmp directory"
             fi
@@ -3688,7 +3695,7 @@ update_agents() {
                 local attempt=1
                 local pkg_success=false
                 while [[ $attempt -le 3 ]]; do
-                    if output=$("$bun_bin" install -g --trust "$pkg" 2>&1); then
+                    if output=$(update_run_in_target_context "" "$bun_bin" install -g --trust "$pkg" 2>&1); then
                         pkg_success=true
                         success=true
                         break 2
@@ -3731,7 +3738,7 @@ update_agents() {
         local gemini_nvm_bin=""
         local gemini_patch_skip_reason="Node.js runtime unavailable"
         capture_version_before "gemini"
-        run_cmd_bun_with_retry "Gemini CLI" "$bun_bin" install -g --trust @google/gemini-cli@latest
+        run_cmd_bun_with_retry "Gemini CLI" update_run_in_target_context "" "$bun_bin" install -g --trust @google/gemini-cli@latest
         # Show version change without double-counting
         if capture_version_after "gemini"; then
             [[ "$QUIET" != "true" ]] && printf "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[gemini]}" "${VERSION_AFTER[gemini]}"
@@ -4004,7 +4011,7 @@ update_cloud() {
     # Wrangler (--trust allows postinstall scripts for native binaries)
     if update_binary_exists wrangler || [[ "$FORCE_MODE" == "true" ]]; then
         if [[ "$has_bun" == "true" ]]; then
-            run_cmd_bun_with_retry "Wrangler (Cloudflare)" "$bun_bin" install -g --trust wrangler@latest
+            run_cmd_bun_with_retry "Wrangler (Cloudflare)" update_run_in_target_context "" "$bun_bin" install -g --trust wrangler@latest
         else
             log_item "fail" "Wrangler (Cloudflare)" "bun not installed (required)"
         fi
@@ -4034,7 +4041,7 @@ update_cloud() {
     # Vercel (--trust allows postinstall scripts for native binaries)
     if update_binary_exists vercel || [[ "$FORCE_MODE" == "true" ]]; then
         if [[ "$has_bun" == "true" ]]; then
-            run_cmd_bun_with_retry "Vercel CLI" "$bun_bin" install -g --trust vercel@latest
+            run_cmd_bun_with_retry "Vercel CLI" update_run_in_target_context "" "$bun_bin" install -g --trust vercel@latest
         else
             log_item "fail" "Vercel CLI" "bun not installed (required)"
         fi
@@ -4156,7 +4163,7 @@ update_cargo_tools() {
         
         # force is required to update existing install with cargo
         # Use run_cmd to log and handle errors
-        run_cmd "Update $tool" "$cargo_bin" install "$tool" --locked --force
+        run_cmd "Update $tool" update_run_in_target_context "" "$cargo_bin" install "$tool" --locked --force
 
         if capture_version_after "$binary_name"; then
              [[ "$QUIET" != "true" ]] && printf "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[$binary_name]}" "${VERSION_AFTER[$binary_name]}"
