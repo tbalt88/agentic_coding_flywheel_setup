@@ -1338,10 +1338,15 @@ export ACFS_BIN_DIR="$target_home/.local/bin"
 source "$STACK_SH"
 resolved_curl="$(_stack_run_as_user 'command -v curl' 2>/dev/null || true)"
 curl_banner="$(_stack_run_as_user 'curl --version 2>&1 | head -n1' 2>/dev/null || true)"
-printf 'curl=%s\nbanner=%s\n' "$resolved_curl" "$curl_banner"
+pwd_output="$(_stack_run_as_user pwd 2>/dev/null || true)"
+printf 'curl=%s\nbanner=%s\npwd=%s\n' "$resolved_curl" "$curl_banner" "$pwd_output"
 EOF
     ); then
-        if [[ "$output" == *$'curl='* ]] && [[ "$output" != *"banner=POISONED_CURL"* ]] && [[ "$output" != *"/global-bin/curl"* ]]; then
+        if [[ "$output" == *$'curl='* ]] \
+            && [[ "$output" != *"banner=POISONED_CURL"* ]] \
+            && [[ "$output" != *"/global-bin/curl"* ]] \
+            && [[ "$output" == *$'pwd='* ]] \
+            && [[ "$output" == *"pwd="*"/target-home"* ]]; then
             harness_pass "stack run-as-user prefers system bins over current-shell PATH"
         else
             harness_fail "stack run-as-user prefers system bins over current-shell PATH" "$output"

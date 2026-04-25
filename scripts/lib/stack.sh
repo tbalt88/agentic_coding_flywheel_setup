@@ -647,7 +647,7 @@ _stack_run_as_user() {
     printf -v target_path_prefix_q '%q' "$target_path_prefix"
 
     wrapped_cmd="export TARGET_USER=$target_user_q TARGET_HOME=$target_home_q HOME=$target_home_q ACFS_BIN_DIR=$acfs_bin_dir_q;"
-    wrapped_cmd+=" export PATH=$target_path_prefix_q:$system_path_prefix:\$PATH; set -o pipefail; $cmd"
+    wrapped_cmd+=" export PATH=$target_path_prefix_q:$system_path_prefix:\$PATH; set -o pipefail; cd \"\$HOME\" || exit 1; $cmd"
 
     if [[ "$(_stack_resolve_current_user 2>/dev/null || true)" == "$target_user" ]]; then
         "$bash_bin" -c "$wrapped_cmd"

@@ -338,7 +338,7 @@ _cloud_run_as_user() {
         wrapped_cmd+=" export ACFS_HOME=$acfs_home_q;"
     fi
     wrapped_cmd+=" export ACFS_BIN_DIR=$acfs_bin_dir_q;"
-    wrapped_cmd+=" export PATH=$target_path_prefix_q:\$PATH; set -o pipefail; $cmd"
+    wrapped_cmd+=" export PATH=$target_path_prefix_q:\$PATH; set -o pipefail; cd \"\$HOME\" || exit 1; $cmd"
 
     if [[ "$(_cloud_resolve_current_user 2>/dev/null || true)" == "$target_user" ]]; then
         "$bash_bin" -c "$wrapped_cmd"
