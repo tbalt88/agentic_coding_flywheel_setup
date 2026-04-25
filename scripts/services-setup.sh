@@ -388,6 +388,7 @@ run_as_user() {
     local sudo_bin=""
     local runuser_bin=""
     local su_bin=""
+    local target_home_for_cd=""
     local -a command_argv=()
 
     services_setup_validate_target_user "$TARGET_USER" || return 1
@@ -412,6 +413,7 @@ run_as_user() {
     if [[ -z "$primary_bin_dir" ]] && [[ -n "${TARGET_HOME:-}" ]]; then
         primary_bin_dir="$TARGET_HOME/.local/bin"
     fi
+    target_home_for_cd="$(services_setup_sanitize_abs_nonroot_path "${TARGET_HOME:-}" 2>/dev/null || true)"
 
     env_cmd=("$env_bin" "TARGET_USER=$TARGET_USER")
     [[ -n "${TARGET_HOME:-}" ]] && env_cmd+=("TARGET_HOME=$TARGET_HOME" "HOME=$TARGET_HOME")
@@ -446,19 +448,39 @@ run_as_user() {
     fi
 
     if [[ "$(services_setup_resolve_current_user 2>/dev/null || true)" == "$TARGET_USER" ]]; then
-        "${env_cmd[@]}" "${command_argv[@]}"
+        if [[ -n "$target_home_for_cd" ]]; then
+            (
+                if ! cd "$target_home_for_cd"; then
+                    log_error "Unable to enter target home for '$TARGET_USER': $target_home_for_cd"
+                    exit 1
+                fi
+                "${env_cmd[@]}" "${command_argv[@]}"
+            )
+        else
+            "${env_cmd[@]}" "${command_argv[@]}"
+        fi
         return $?
     fi
 
     sudo_bin="$(services_setup_system_binary_path sudo 2>/dev/null || true)"
     if [[ -n "$sudo_bin" ]]; then
-        "$sudo_bin" -u "$TARGET_USER" -H "${env_cmd[@]}" "${command_argv[@]}"
+        if [[ -n "$target_home_for_cd" ]]; then
+            # shellcheck disable=SC2016  # $HOME/$@ expand inside sh -c.
+            "$sudo_bin" -u "$TARGET_USER" -H "${env_cmd[@]}" "$sh_bin" -c 'cd "$HOME" || exit 1; exec "$@"' _ "${command_argv[@]}"
+        else
+            "$sudo_bin" -u "$TARGET_USER" -H "${env_cmd[@]}" "${command_argv[@]}"
+        fi
         return $?
     fi
     
     runuser_bin="$(services_setup_system_binary_path runuser 2>/dev/null || true)"
     if [[ -n "$runuser_bin" ]]; then
-        "$runuser_bin" -u "$TARGET_USER" -- "${env_cmd[@]}" "${command_argv[@]}"
+        if [[ -n "$target_home_for_cd" ]]; then
+            # shellcheck disable=SC2016  # $HOME/$@ expand inside sh -c.
+            "$runuser_bin" -u "$TARGET_USER" -- "${env_cmd[@]}" "$sh_bin" -c 'cd "$HOME" || exit 1; exec "$@"' _ "${command_argv[@]}"
+        else
+            "$runuser_bin" -u "$TARGET_USER" -- "${env_cmd[@]}" "${command_argv[@]}"
+        fi
         return $?
     fi
 
@@ -470,6 +492,9 @@ run_as_user() {
 
     local -a quoted_cmd=()
     local arg=""
+    if [[ -n "$target_home_for_cd" ]]; then
+        command_argv=("$sh_bin" -c 'cd "$HOME" || exit 1; exec "$@"' _ "${command_argv[@]}")
+    fi
     for arg in "${env_cmd[@]}" "${command_argv[@]}"; do
         quoted_cmd+=("$(printf '%q' "$arg")")
     done
@@ -486,6 +511,7 @@ run_as_user_shell() {
     local sudo_bin=""
     local runuser_bin=""
     local su_bin=""
+    local target_home_for_cd=""
 
     services_setup_validate_target_user "$TARGET_USER" || return 1
 
@@ -500,6 +526,7 @@ run_as_user_shell() {
     if [[ -z "$primary_bin_dir" ]] && [[ -n "${TARGET_HOME:-}" ]]; then
         primary_bin_dir="$TARGET_HOME/.local/bin"
     fi
+    target_home_for_cd="$(services_setup_sanitize_abs_nonroot_path "${TARGET_HOME:-}" 2>/dev/null || true)"
 
     env_cmd=("$env_bin" "TARGET_USER=$TARGET_USER")
     [[ -n "${TARGET_HOME:-}" ]] && env_cmd+=("TARGET_HOME=$TARGET_HOME" "HOME=$TARGET_HOME")
@@ -507,11 +534,31 @@ run_as_user_shell() {
     [[ -n "$primary_bin_dir" ]] && env_cmd+=("ACFS_BIN_DIR=$primary_bin_dir")
 
     if [[ "$(services_setup_resolve_current_user 2>/dev/null || true)" == "$TARGET_USER" ]]; then
-        "${env_cmd[@]}" "$bash_bin" -c "$cmd"
+        if [[ -n "$target_home_for_cd" ]]; then
+            (
+                if ! cd "$target_home_for_cd"; then
+                    log_error "Unable to enter target home for '$TARGET_USER': $target_home_for_cd"
+                    exit 1
+                fi
+                "${env_cmd[@]}" "$bash_bin" -c "$cmd"
+            )
+        else
+            "${env_cmd[@]}" "$bash_bin" -c "$cmd"
+        fi
     elif sudo_bin="$(services_setup_system_binary_path sudo 2>/dev/null || true)" && [[ -n "$sudo_bin" ]]; then
-        "$sudo_bin" -u "$TARGET_USER" -H "${env_cmd[@]}" "$bash_bin" -c "$cmd"
+        if [[ -n "$target_home_for_cd" ]]; then
+            # shellcheck disable=SC2016  # $HOME/$@ expand inside bash -c.
+            "$sudo_bin" -u "$TARGET_USER" -H "${env_cmd[@]}" "$bash_bin" -c 'cd "$HOME" || exit 1; exec "$@"' _ "$bash_bin" -c "$cmd"
+        else
+            "$sudo_bin" -u "$TARGET_USER" -H "${env_cmd[@]}" "$bash_bin" -c "$cmd"
+        fi
     elif runuser_bin="$(services_setup_system_binary_path runuser 2>/dev/null || true)" && [[ -n "$runuser_bin" ]]; then
-        "$runuser_bin" -u "$TARGET_USER" -- "${env_cmd[@]}" "$bash_bin" -c "$cmd"
+        if [[ -n "$target_home_for_cd" ]]; then
+            # shellcheck disable=SC2016  # $HOME/$@ expand inside bash -c.
+            "$runuser_bin" -u "$TARGET_USER" -- "${env_cmd[@]}" "$bash_bin" -c 'cd "$HOME" || exit 1; exec "$@"' _ "$bash_bin" -c "$cmd"
+        else
+            "$runuser_bin" -u "$TARGET_USER" -- "${env_cmd[@]}" "$bash_bin" -c "$cmd"
+        fi
     else
         su_bin="$(services_setup_system_binary_path su 2>/dev/null || true)"
         [[ -n "$su_bin" ]] || {
@@ -521,7 +568,11 @@ run_as_user_shell() {
 
         local -a quoted_cmd=()
         local arg=""
-        for arg in "${env_cmd[@]}" "$bash_bin" "-c" "$cmd"; do
+        local -a shell_argv=("$bash_bin" "-c" "$cmd")
+        if [[ -n "$target_home_for_cd" ]]; then
+            shell_argv=("$bash_bin" "-c" 'cd "$HOME" || exit 1; exec "$@"' _ "${shell_argv[@]}")
+        fi
+        for arg in "${env_cmd[@]}" "${shell_argv[@]}"; do
             quoted_cmd+=("$(printf '%q' "$arg")")
         done
         "$su_bin" "$TARGET_USER" -c "${quoted_cmd[*]}"

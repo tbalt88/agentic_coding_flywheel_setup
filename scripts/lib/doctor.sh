@@ -2826,23 +2826,24 @@ _doctor_run_manifest_check() {
             done
             target_path_prefix=$(IFS=:; echo "${target_path_entries[*]}")
             target_path="$target_path_prefix${PATH:+:$PATH}"
+            local -a target_check_argv=("$bash_bin" -c 'cd "$HOME" || exit 1; exec "$@"' _ "$bash_bin" -o pipefail -c "$cmd")
             if [[ "$(_acfs_doctor_resolve_current_user 2>/dev/null || true)" == "$target_user" ]]; then
-                "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" HOME="$target_home" PATH="$target_path" "$bash_bin" -o pipefail -c "$cmd"
+                "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" HOME="$target_home" PATH="$target_path" "${target_check_argv[@]}"
                 return $?
             fi
             runuser_bin="$(_acfs_doctor_system_binary_path runuser 2>/dev/null || true)"
             if [[ $EUID -eq 0 && -n "$runuser_bin" ]]; then
-                "$runuser_bin" -u "$target_user" -- "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" HOME="$target_home" PATH="$target_path" "$bash_bin" -o pipefail -c "$cmd"
+                "$runuser_bin" -u "$target_user" -- "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" HOME="$target_home" PATH="$target_path" "${target_check_argv[@]}"
                 return $?
             fi
             sudo_bin="$(_acfs_doctor_system_binary_path sudo 2>/dev/null || true)"
             if [[ -n "$sudo_bin" ]]; then
-                "$sudo_bin" -n -u "$target_user" "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" HOME="$target_home" PATH="$target_path" "$bash_bin" -o pipefail -c "$cmd"
+                "$sudo_bin" -n -u "$target_user" "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" HOME="$target_home" PATH="$target_path" "${target_check_argv[@]}"
                 return $?
             fi
             su_bin="$(_acfs_doctor_system_binary_path su 2>/dev/null || true)"
             if [[ $EUID -eq 0 && -n "$su_bin" ]]; then
-                "$su_bin" "$target_user" -c "$(printf '%q' "$env_bin") TARGET_USER=$(printf '%q' "$target_user") TARGET_HOME=$(printf '%q' "$target_home") HOME=$(printf '%q' "$target_home") PATH=$(printf '%q' "$target_path") $(printf '%q' "$bash_bin") -o pipefail -c $(printf '%q' "$cmd")"
+                "$su_bin" "$target_user" -c "$(printf '%q' "$env_bin") TARGET_USER=$(printf '%q' "$target_user") TARGET_HOME=$(printf '%q' "$target_home") HOME=$(printf '%q' "$target_home") PATH=$(printf '%q' "$target_path") $(printf '%q ' "${target_check_argv[@]}")"
                 return $?
             fi
             return 1
