@@ -35,6 +35,13 @@ _lang_command_exists() {
     command -v "$1" &>/dev/null
 }
 
+_lang_remove_temp_dir() {
+    local tmpdir="${1:-}"
+    if [[ -n "$tmpdir" && -d "$tmpdir" ]]; then
+        rm -rf -- "$tmpdir" 2>/dev/null || true
+    fi
+}
+
 # Get the sudo command if needed
 _lang_get_sudo() {
     if [[ $EUID -eq 0 ]]; then
@@ -695,24 +702,37 @@ install_go_latest() {
         log_warn "mktemp failed; cannot install Go"
         return 1
     fi
-    trap 'rm -rf -- "${tmpdir:-}" 2>/dev/null || true; trap - RETURN' RETURN
     local tarball="${version}.linux-${arch}.tar.gz"
 
     log_detail "Downloading $tarball..."
     if ! curl --proto '=https' --proto-redir '=https' -fsSL -o "$tmpdir/$tarball" "https://go.dev/dl/$tarball"; then
         log_warn "Failed to download Go"
-        rm -rf -- "$tmpdir"
+        _lang_remove_temp_dir "$tmpdir"
         return 1
     fi
 
     # Remove old installation and extract new one
-    $sudo_cmd rm -rf -- /usr/local/go
-    $sudo_cmd tar -C /usr/local -xzf "$tmpdir/$tarball"
-    rm -rf -- "$tmpdir"
+    if ! $sudo_cmd rm -rf -- /usr/local/go; then
+        log_warn "Failed to remove existing Go installation"
+        _lang_remove_temp_dir "$tmpdir"
+        return 1
+    fi
+    if ! $sudo_cmd tar -C /usr/local -xzf "$tmpdir/$tarball"; then
+        log_warn "Failed to extract Go"
+        _lang_remove_temp_dir "$tmpdir"
+        return 1
+    fi
+    _lang_remove_temp_dir "$tmpdir"
 
     # Create symlinks
-    $sudo_cmd ln -sf /usr/local/go/bin/go /usr/local/bin/go
-    $sudo_cmd ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+    if ! $sudo_cmd ln -sf /usr/local/go/bin/go /usr/local/bin/go; then
+        log_warn "Failed to link go binary"
+        return 1
+    fi
+    if ! $sudo_cmd ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt; then
+        log_warn "Failed to link gofmt binary"
+        return 1
+    fi
 
     local installed_version
     installed_version=$(/usr/local/go/bin/go version 2>/dev/null | cut -d' ' -f3 || echo "unknown")

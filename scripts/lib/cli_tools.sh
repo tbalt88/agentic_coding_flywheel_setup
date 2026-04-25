@@ -69,6 +69,13 @@ _cli_command_exists() {
     command -v "$1" &>/dev/null
 }
 
+_cli_remove_temp_dir() {
+    local tmpdir="${1:-}"
+    if [[ -n "$tmpdir" && -d "$tmpdir" ]]; then
+        rm -rf -- "$tmpdir" 2>/dev/null || true
+    fi
+}
+
 _cli_target_has_command() {
     local cmd="${1:-}"
     local target_user="${TARGET_USER:-ubuntu}"
@@ -708,25 +715,24 @@ install_lazygit() {
         log_warn "mktemp failed; cannot install lazygit"
         return 1
     fi
-    trap 'rm -rf -- "${tmpdir:-}" 2>/dev/null || true; trap - RETURN' RETURN
     curl --proto '=https' --proto-redir '=https' -fsSL -o "$tmpdir/lazygit.tar.gz" \
         "https://github.com/jesseduffield/lazygit/releases/download/v${version}/lazygit_${version}_Linux_${arch}.tar.gz" || {
         log_warn "Could not download lazygit"
-        rm -rf -- "$tmpdir"
+        _cli_remove_temp_dir "$tmpdir"
         return 1
     }
 
     tar -xzf "$tmpdir/lazygit.tar.gz" -C "$tmpdir" || {
         log_warn "Failed to extract lazygit tarball"
-        rm -rf -- "$tmpdir"
+        _cli_remove_temp_dir "$tmpdir"
         return 1
     }
     $sudo_cmd install "$tmpdir/lazygit" /usr/local/bin/lazygit || {
         log_warn "Failed to install lazygit"
-        rm -rf -- "$tmpdir"
+        _cli_remove_temp_dir "$tmpdir"
         return 1
     }
-    rm -rf -- "$tmpdir"
+    _cli_remove_temp_dir "$tmpdir"
 
     log_success "lazygit installed from GitHub"
 }
@@ -762,25 +768,24 @@ install_lazydocker() {
         log_warn "mktemp failed; cannot install lazydocker"
         return 1
     fi
-    trap 'rm -rf -- "${tmpdir:-}" 2>/dev/null || true; trap - RETURN' RETURN
     curl --proto '=https' --proto-redir '=https' -fsSL -o "$tmpdir/lazydocker.tar.gz" \
         "https://github.com/jesseduffield/lazydocker/releases/download/v${version}/lazydocker_${version}_Linux_${arch}.tar.gz" || {
         log_warn "Could not download lazydocker"
-        rm -rf -- "$tmpdir"
+        _cli_remove_temp_dir "$tmpdir"
         return 1
     }
 
     tar -xzf "$tmpdir/lazydocker.tar.gz" -C "$tmpdir" || {
         log_warn "Failed to extract lazydocker tarball"
-        rm -rf -- "$tmpdir"
+        _cli_remove_temp_dir "$tmpdir"
         return 1
     }
     $sudo_cmd install "$tmpdir/lazydocker" /usr/local/bin/lazydocker || {
         log_warn "Failed to install lazydocker"
-        rm -rf -- "$tmpdir"
+        _cli_remove_temp_dir "$tmpdir"
         return 1
     }
-    rm -rf -- "$tmpdir"
+    _cli_remove_temp_dir "$tmpdir"
 
     log_success "lazydocker installed from GitHub"
 }
@@ -816,25 +821,24 @@ install_yq() {
         log_warn "mktemp failed; cannot install yq"
         return 1
     fi
-    trap 'rm -rf -- "${tmpdir:-}" 2>/dev/null || true; trap - RETURN' RETURN
     curl --proto '=https' --proto-redir '=https' -fsSL -o "$tmpdir/yq" \
         "https://github.com/mikefarah/yq/releases/download/${version}/yq_linux_${arch}" || {
         log_warn "Could not download yq"
-        rm -rf -- "$tmpdir"
+        _cli_remove_temp_dir "$tmpdir"
         return 1
     }
 
     chmod +x "$tmpdir/yq" || {
         log_warn "Failed to make yq executable"
-        rm -rf -- "$tmpdir"
+        _cli_remove_temp_dir "$tmpdir"
         return 1
     }
     $sudo_cmd install "$tmpdir/yq" /usr/local/bin/yq || {
         log_warn "Failed to install yq"
-        rm -rf -- "$tmpdir"
+        _cli_remove_temp_dir "$tmpdir"
         return 1
     }
-    rm -rf -- "$tmpdir"
+    _cli_remove_temp_dir "$tmpdir"
 
     log_success "yq installed from GitHub"
 }

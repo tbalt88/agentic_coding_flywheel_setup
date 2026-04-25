@@ -42,6 +42,13 @@ dashboard_sanitize_abs_nonroot_path() {
     printf '%s\n' "$path_value"
 }
 
+dashboard_remove_temp_file() {
+    local tmp_file="${1:-}"
+    if [[ -n "$tmp_file" && -e "$tmp_file" ]]; then
+        rm -f -- "$tmp_file" 2>/dev/null || true
+    fi
+}
+
 dashboard_existing_abs_home() {
     local path_value=""
 
@@ -764,23 +771,22 @@ dashboard_generate() {
         return 1
     }
 
-    cleanup_tmp_file() {
-        if [[ -n "${tmp_file:-}" && -e "$tmp_file" ]]; then
-            rm -f "$tmp_file"
-        fi
-    }
-
-    trap 'cleanup_tmp_file; trap - RETURN' RETURN
-
     if ! bash "$info_script" --html > "$tmp_file"; then
         echo "Error: dashboard generation failed" >&2
+        dashboard_remove_temp_file "$tmp_file"
         return 1
     fi
 
-    mv "$tmp_file" "$html_file"
-    tmp_file=""
-    trap - RETURN
-    date +%s > "$timestamp_file"
+    if ! mv -- "$tmp_file" "$html_file"; then
+        echo "Error: could not replace dashboard file" >&2
+        dashboard_remove_temp_file "$tmp_file"
+        return 1
+    fi
+
+    if ! date +%s > "$timestamp_file"; then
+        echo "Error: could not update dashboard timestamp" >&2
+        return 1
+    fi
 
     echo "Dashboard generated: $html_file"
     echo "Open with: open \"$html_file\" (macOS) or xdg-open \"$html_file\" (Linux)"
