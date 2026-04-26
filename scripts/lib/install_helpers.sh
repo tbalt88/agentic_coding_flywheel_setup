@@ -568,23 +568,19 @@ acfs_apply_legacy_skips() {
 # Command execution helpers (heredoc-friendly)
 # ------------------------------------------------------------
 
-# Common paths for user-installed tools (added to PATH for verification)
-# This ensures tools installed in user directories are findable
-_acfs_user_paths() {
-    local acfs_bin_prefix="\$HOME/.local/bin"
-    if [[ -n "${ACFS_BIN_DIR:-}" ]]; then
-        acfs_bin_prefix="$ACFS_BIN_DIR:\$HOME/.local/bin"
-    fi
-
-    echo "${acfs_bin_prefix}:\$HOME/.acfs/bin:\$HOME/.cargo/bin:\$HOME/.bun/bin:\$HOME/.atuin/bin:\$HOME/go/bin"
+# Shell source for adding common user-installed tool paths at execution time.
+# HOME and ACFS_BIN_DIR are expanded by the target shell from env data, so
+# poisoned values stay inert while home-relative paths resolve correctly.
+_acfs_user_path_export_source() {
+    printf '%s\n' '_acfs_primary_bin="${ACFS_BIN_DIR:-$HOME/.local/bin}"; export PATH="${_acfs_primary_bin}:$HOME/.local/bin:$HOME/.acfs/bin:$HOME/.cargo/bin:$HOME/.bun/bin:$HOME/.atuin/bin:$HOME/go/bin:$PATH"'
 }
 
 _run_shell_with_strict_mode() {
     local cmd="$1"
-    local path_prefix
+    local path_export_source
     local env_bin=""
     local bash_bin=""
-    path_prefix="$(_acfs_user_paths)"
+    path_export_source="$(_acfs_user_path_export_source)"
 
     env_bin="$(_acfs_system_binary_path env 2>/dev/null || true)"
     [[ -n "$env_bin" ]] || {
@@ -597,20 +593,19 @@ _run_shell_with_strict_mode() {
         return 1
     }
 
-    # Keep path data out of the shell source. ACFS_BIN_DIR may come from the
-    # environment, so pass it through env rather than interpolating it into
-    # bash -c where command substitutions would execute.
-    local -a shell_env=("ACFS_TARGET_PATH_PREFIX=$path_prefix" "ACFS_BASH_BIN=$bash_bin" "UV_NO_CONFIG=1")
+    # Keep path values in env data. The fixed shell wrapper expands HOME and
+    # ACFS_BIN_DIR at runtime without re-parsing their contents.
+    local -a shell_env=("ACFS_BASH_BIN=$bash_bin" "UV_NO_CONFIG=1")
 
     if [[ -n "$cmd" ]]; then
         # IMPORTANT: Avoid `bash -l` (login shell). Third-party installers can
         # leave broken profile files that would break non-interactive runs.
-        "$env_bin" "${shell_env[@]}" "$bash_bin" -c 'export PATH="${ACFS_TARGET_PATH_PREFIX}:$PATH"; set -euo pipefail; eval "$1"' _ "$cmd"
+        "$env_bin" "${shell_env[@]}" "$bash_bin" -c "$path_export_source; set -euo pipefail; eval \"\$1\"" _ "$cmd"
         return $?
     fi
 
     # stdin mode (supports heredocs/pipes)
-    "$env_bin" "${shell_env[@]}" "$bash_bin" -c 'export PATH="${ACFS_TARGET_PATH_PREFIX}:$PATH"; set -euo pipefail; (printf "%s\n" "set -euo pipefail"; cat) | "$ACFS_BASH_BIN" -s'
+    "$env_bin" "${shell_env[@]}" "$bash_bin" -c "$path_export_source; set -euo pipefail; (printf \"%s\\n\" \"set -euo pipefail\"; cat) | \"\$ACFS_BASH_BIN\" -s"
 }
 
 # Resolve a target user's home via NSS/getent with safe fallbacks.
@@ -1045,10 +1040,10 @@ acfs_install_executable_into_primary_bin() {
 # Run a shell string (or stdin) as TARGET_USER
 run_as_target_shell() {
     local cmd="${1:-}"
-    local path_prefix
+    local path_export_source
     local env_bin=""
     local bash_bin=""
-    path_prefix="$(_acfs_user_paths)"
+    path_export_source="$(_acfs_user_path_export_source)"
 
     if ! declare -f run_as_target >/dev/null 2>&1; then
         log_error "run_as_target_shell requires run_as_target"
@@ -1065,18 +1060,18 @@ run_as_target_shell() {
         return 1
     }
 
-    # Keep path data out of the shell source. run_as_target passes env
-    # assignments as argv, so poisoned path values remain inert data.
-    local -a shell_env=("ACFS_TARGET_PATH_PREFIX=$path_prefix" "ACFS_BASH_BIN=$bash_bin" "UV_NO_CONFIG=1")
+    # Keep user-provided path values in env data. The fixed shell wrapper
+    # expands HOME/ACFS_BIN_DIR at runtime without re-parsing their contents.
+    local -a shell_env=("ACFS_BASH_BIN=$bash_bin" "UV_NO_CONFIG=1")
 
     if [[ -n "$cmd" ]]; then
         # IMPORTANT: Avoid `bash -l` (login shell). Profile files are not a stable API.
-        run_as_target "$env_bin" "${shell_env[@]}" "$bash_bin" -c 'export PATH="${ACFS_TARGET_PATH_PREFIX}:$PATH"; set -euo pipefail; eval "$1"' _ "$cmd"
+        run_as_target "$env_bin" "${shell_env[@]}" "$bash_bin" -c "$path_export_source; set -euo pipefail; eval \"\$1\"" _ "$cmd"
         return $?
     fi
 
     # stdin mode
-    run_as_target "$env_bin" "${shell_env[@]}" "$bash_bin" -c 'export PATH="${ACFS_TARGET_PATH_PREFIX}:$PATH"; set -euo pipefail; (printf "%s\n" "set -euo pipefail"; cat) | "$ACFS_BASH_BIN" -s'
+    run_as_target "$env_bin" "${shell_env[@]}" "$bash_bin" -c "$path_export_source; set -euo pipefail; (printf \"%s\\n\" \"set -euo pipefail\"; cat) | \"\$ACFS_BASH_BIN\" -s"
 }
 
 # Run a command as TARGET_USER while preserving stdin for the final runner.
@@ -1100,6 +1095,7 @@ run_as_target_runner() {
 # Run a shell string (or stdin) as root
 run_as_root_shell() {
     local cmd="${1:-}"
+    local path_export_source=""
     local env_bin=""
     local bash_bin=""
     local sudo_bin=""
@@ -1118,6 +1114,7 @@ run_as_root_shell() {
         log_error "Unable to locate bash for root shell command"
         return 1
     }
+    path_export_source="$(_acfs_user_path_export_source)"
 
     # Build env args for passing through sudo
     local -a env_cmd=()
@@ -1138,9 +1135,7 @@ run_as_root_shell() {
     [[ -n "${ACFS_VERSION:-}" ]] && env_args+=("ACFS_VERSION=$ACFS_VERSION")
     [[ -n "${ACFS_REF:-}" ]] && env_args+=("ACFS_REF=$ACFS_REF")
 
-    if [[ ${#env_args[@]} -gt 0 ]]; then
-        env_cmd=("$env_bin" "${env_args[@]}")
-    fi
+    env_cmd=("$env_bin" "${env_args[@]}" "ACFS_BASH_BIN=$bash_bin" "UV_NO_CONFIG=1")
 
     if [[ -n "${SUDO:-}" ]]; then
         if [[ "$SUDO" == /* && -x "$SUDO" ]]; then
@@ -1153,20 +1148,20 @@ run_as_root_shell() {
             return 1
         }
         if [[ -n "$cmd" ]]; then
-            "$sudo_bin" "${env_cmd[@]}" "$bash_bin" -c "set -euo pipefail; $cmd"
+            "$sudo_bin" "${env_cmd[@]}" "$bash_bin" -c "$path_export_source; set -euo pipefail; eval \"\$1\"" _ "$cmd"
             return $?
         fi
-        "$sudo_bin" "${env_cmd[@]}" "$bash_bin" -c 'set -euo pipefail; (printf "%s\n" "set -euo pipefail"; cat) | "$0" -s' "$bash_bin"
+        "$sudo_bin" "${env_cmd[@]}" "$bash_bin" -c "$path_export_source; set -euo pipefail; (printf \"%s\\n\" \"set -euo pipefail\"; cat) | \"\$ACFS_BASH_BIN\" -s"
         return $?
     fi
 
     sudo_bin="$(_acfs_system_binary_path sudo 2>/dev/null || true)"
     if [[ -n "$sudo_bin" ]]; then
         if [[ -n "$cmd" ]]; then
-            "$sudo_bin" "${env_cmd[@]}" "$bash_bin" -c "set -euo pipefail; $cmd"
+            "$sudo_bin" "${env_cmd[@]}" "$bash_bin" -c "$path_export_source; set -euo pipefail; eval \"\$1\"" _ "$cmd"
             return $?
         fi
-        "$sudo_bin" "${env_cmd[@]}" "$bash_bin" -c 'set -euo pipefail; (printf "%s\n" "set -euo pipefail"; cat) | "$0" -s' "$bash_bin"
+        "$sudo_bin" "${env_cmd[@]}" "$bash_bin" -c "$path_export_source; set -euo pipefail; (printf \"%s\\n\" \"set -euo pipefail\"; cat) | \"\$ACFS_BASH_BIN\" -s"
         return $?
     fi
 
@@ -1206,7 +1201,6 @@ acfs_module_is_installed() {
     local module_id="$1"
     local env_bin=""
     local bash_bin=""
-    local sudo_bin=""
 
     # If force reinstall is enabled, always return "not installed"
     if _acfs_force_reinstall_enabled; then
@@ -1231,14 +1225,15 @@ acfs_module_is_installed() {
     # Run the check in the appropriate context
     case "$run_as" in
         target_user|target)
-            local path_prefix=""
-            path_prefix="$(_acfs_user_paths)"
+            local path_export_source=""
+            path_export_source="$(_acfs_user_path_export_source)"
             if declare -f run_as_target >/dev/null 2>&1; then
                 env_bin="$(_acfs_system_binary_path env 2>/dev/null || true)"
                 bash_bin="$(_acfs_system_binary_path bash 2>/dev/null || true)"
                 [[ -n "$env_bin" && -n "$bash_bin" ]] || return 1
-                run_as_target "$env_bin" "ACFS_TARGET_PATH_PREFIX=$path_prefix" \
-                    "$bash_bin" -c "export PATH=\"\$ACFS_TARGET_PATH_PREFIX:\$PATH\"; $check_cmd" >/dev/null 2>&1
+                run_as_target "$env_bin" "$bash_bin" -c \
+                    "$path_export_source; set -euo pipefail; eval \"\$1\"" \
+                    _ "$check_cmd" >/dev/null 2>&1
                 return $?
             fi
             # Target-user checks must fail closed when we cannot execute in the
@@ -1247,15 +1242,8 @@ acfs_module_is_installed() {
             return 1
             ;;
         root)
-            bash_bin="$(_acfs_system_binary_path bash 2>/dev/null || true)"
-            [[ -n "$bash_bin" ]] || return 1
-            if [[ "$EUID" -eq 0 ]]; then
-                "$bash_bin" -c "$check_cmd" >/dev/null 2>&1
-                return $?
-            fi
-            sudo_bin="$(_acfs_system_binary_path sudo 2>/dev/null || true)"
-            if [[ -n "$sudo_bin" ]]; then
-                "$sudo_bin" "$bash_bin" -c "$check_cmd" >/dev/null 2>&1
+            if declare -f run_as_root_shell >/dev/null 2>&1; then
+                run_as_root_shell "$check_cmd" >/dev/null 2>&1
                 return $?
             fi
             # Root checks must fail closed when sudo is unavailable. Falling
@@ -1264,9 +1252,7 @@ acfs_module_is_installed() {
             return 1
             ;;
         current|*)
-            bash_bin="$(_acfs_system_binary_path bash 2>/dev/null || true)"
-            [[ -n "$bash_bin" ]] || return 1
-            "$bash_bin" -c "$check_cmd" >/dev/null 2>&1
+            _run_shell_with_strict_mode "$check_cmd" >/dev/null 2>&1
             return $?
             ;;
     esac
@@ -1300,14 +1286,14 @@ command_exists() {
 
 command_exists_as_target() {
     local cmd="$1"
-    local path_prefix
+    local path_export_source
     local env_bin=""
     local bash_bin=""
     if ! declare -f run_as_target >/dev/null 2>&1; then
         return 1
     fi
 
-    path_prefix="$(_acfs_user_paths)"
+    path_export_source="$(_acfs_user_path_export_source)"
     env_bin="$(_acfs_system_binary_path env 2>/dev/null || true)"
     bash_bin="$(_acfs_system_binary_path bash 2>/dev/null || true)"
     [[ -n "$env_bin" && -n "$bash_bin" ]] || return 1
@@ -1317,8 +1303,8 @@ command_exists_as_target() {
     #
     # Also, extend PATH with common user install locations so we can detect
     # tools installed under the configured user bin dir, cargo, bun, etc.
-    run_as_target "$env_bin" "ACFS_TARGET_PATH_PREFIX=$path_prefix" "$bash_bin" -c \
-        'export PATH="${ACFS_TARGET_PATH_PREFIX}:$PATH"; command -v -- "$1" >/dev/null 2>&1' \
+    run_as_target "$env_bin" "$bash_bin" -c \
+        "$path_export_source; command -v -- \"\$1\" >/dev/null 2>&1" \
         _ "$cmd"
 }
 
