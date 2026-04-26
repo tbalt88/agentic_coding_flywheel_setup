@@ -120,6 +120,13 @@ Once inside an NTM session:
 ## Try It Now
 
 ```bash
+# Optional but recommended: build the CASS index once before sending
+# tasks. ntm send runs a duplicate-check against past agent sessions
+# via cass; on a fresh install with no index, that check is a no-op
+# (ntm warns and continues), but you'll get more useful dedup
+# behavior after this:
+cass index --full
+
 # Create a test session
 ntm spawn test-session --cc=1
 
@@ -132,6 +139,12 @@ ntm send test-session "Say hello and confirm you're working"
 # Attach to see the result
 ntm attach test-session
 ```
+
+> **CASS first run:** `cass --version` works the moment cass is
+> installed, but the search-backed code paths (dedup, context
+> injection) need an initial index. Run `cass index --full` once after
+> install. `cass health` will report `initialized: true` once it
+> finishes.
 
 ---
 
