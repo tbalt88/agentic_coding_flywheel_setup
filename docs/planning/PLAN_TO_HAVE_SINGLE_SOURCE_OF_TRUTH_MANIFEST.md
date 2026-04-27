@@ -1905,7 +1905,7 @@ No changes made (dry-run mode).
 - [ ] **1.1.7** Inventory existing install.sh CLI flags used by the wizard/docs and map them to manifest-driven selection (tags/modules)
 - [ ] **1.1.8** Inventory assets required at runtime (`acfs/**`, templates, onboarding lessons) so curl|bash bootstrap includes them
 
-**Deliverable:** `docs/manifest-gap-analysis.md` with complete mapping
+**Deliverable:** `docs/audits/manifest-gap-analysis.md` with complete mapping
 
 ---
 
@@ -2710,7 +2710,7 @@ fi
 
 | Week | Phase | Deliverable |
 |------|-------|-------------|
-| 1-2 | Gap Analysis + Schema | `docs/manifest-gap-analysis.md`, enhanced schema |
+| 1-2 | Gap Analysis + Schema | `docs/audits/manifest-gap-analysis.md`, enhanced schema |
 | 3-4 | Generator Enhancement | Updated generate.ts with all new features |
 | 5-6 | install.sh Refactor | Sourcing generated scripts, one category at a time |
 | 7 | Testing | Passing Docker tests, CI integration |

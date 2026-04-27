@@ -48,4 +48,4 @@ acfs doctor --json
 
 - [AGENTS.md](../../AGENTS.md) - Agent coordination guidelines
 - [README.md](../../README.md) - Project overview
-- [manifest-gap-analysis.md](../manifest-gap-analysis.md) - Installer/manifest mapping
+- [manifest-gap-analysis.md](../audits/manifest-gap-analysis.md) - Installer/manifest mapping

@@ -3,7 +3,7 @@
 > Design for bead kfy5: Design newproj TUI wizard flow and screens
 > Designer: BrightWolf (claude-code, opus-4.5)
 > Date: 2026-01-07
-> Based on: docs/tui-research.md
+> Based on: docs/research/tui-research.md
 
 ---
 
