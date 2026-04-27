@@ -278,7 +278,7 @@ readonly OPTIONAL_REDACT_PATTERNS=(
 )
 
 # Sanitize content by applying redaction patterns
-# Usage: sanitize_content [file] (or reads from stdin)
+# Usage: sanitize_content [file|content] (or reads from stdin)
 # Returns: sanitized content via stdout
 sanitize_content() {
     local sed_flags="g"
@@ -304,8 +304,12 @@ sanitize_content() {
         done
     fi
 
-    if [[ $# -gt 0 && -f "$1" ]]; then
-        sed -E "$sed_script" "$1"
+    if [[ $# -gt 0 ]]; then
+        if [[ -f "$1" ]]; then
+            sed -E "$sed_script" "$1"
+        else
+            printf '%s' "$1" | sed -E "$sed_script"
+        fi
     else
         sed -E "$sed_script"
     fi
