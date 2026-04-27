@@ -86,7 +86,7 @@ fix_path_ordering() {
     # Record change with undo command
     record_change "path" "Added PATH ordering to $target_file" \
         "sed -i '/# ACFS PATH ordering/,/^export PATH/d' '$target_file'" \
-        false "info" "[\"$target_file\"]" "$backup_json" "[]"
+        false "info" "$(autofix_files_json "$target_file")" "$backup_json" "[]"
 }
 ```
 
@@ -124,7 +124,7 @@ fix_config_copy() {
     # Record change
     record_change "config" "Copied config: $(basename "$src")" \
         "rm -f '$dest'" \
-        false "info" "[\"$dest\"]" "[]" "[]"
+        false "info" "$(autofix_files_json "$dest")" "[]" "[]"
 }
 ```
 
@@ -190,7 +190,7 @@ fix_symlink_create() {
     # Record change
     record_change "symlink" "Created symlink: $(basename "$symlink")" \
         "rm -f '$symlink'" \
-        false "info" "[\"$symlink\"]" "[]" "[]"
+        false "info" "$(autofix_files_json "$symlink")" "[]" "[]"
 }
 ```
 
@@ -225,7 +225,7 @@ fix_plugin_clone() {
     # Record change
     record_change "plugin" "Cloned zsh plugin: $plugin_name" \
         "rm -rf '$target_dir'" \
-        false "info" "[\"$target_dir\"]" "[]" "[]"
+        false "info" "$(autofix_files_json "$target_dir")" "[]" "[]"
 }
 ```
 
@@ -265,7 +265,7 @@ fix_acfs_sourcing() {
     # Record change
     record_change "config" "Added ACFS sourcing to .zshrc" \
         "sed -i '/# ACFS configuration/,+1d' '$zshrc'" \
-        false "info" "[\"$zshrc\"]" "$backup_json" "[]"
+        false "info" "$(autofix_files_json "$zshrc")" "$backup_json" "[]"
 }
 ```
 

@@ -621,6 +621,29 @@ EOF
     return 0
 }
 
+test_doctor_fix_files_json_escapes_special_paths() {
+    local tricky_path='/tmp/acfs "quoted" path\bin'
+    local files_json=""
+    local decoded=""
+
+    files_json="$(doctor_fix_files_json "$tricky_path")" || {
+        echo "  doctor_fix_files_json should encode valid path arguments"
+        return 1
+    }
+
+    decoded="$(printf '%s' "$files_json" | jq -r '.[0]' 2>/dev/null)" || {
+        echo "  Encoded affected-files JSON was not parseable"
+        return 1
+    }
+
+    if [[ "$decoded" != "$tricky_path" ]]; then
+        echo "  Encoded affected-files JSON did not round-trip special path characters"
+        return 1
+    fi
+
+    return 0
+}
+
 # ============================================================
 # Test: file_contains_line helper
 # ============================================================
@@ -3439,6 +3462,7 @@ main() {
     run_test test_doctor_fix_binary_path_ignores_other_user_bin_dir
     run_test test_doctor_fix_run_rollback_command_requires_root_fails_without_sudo
     run_test test_doctor_fix_run_rollback_command_uses_noninteractive_sudo
+    run_test test_doctor_fix_files_json_escapes_special_paths
 
     # fix_path_ordering tests
     run_test test_fix_path_ordering_applies

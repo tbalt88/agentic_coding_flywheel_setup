@@ -1262,6 +1262,15 @@ verify_backup_integrity() {
 # Change Recording
 # =============================================================================
 
+autofix_files_json() {
+    if [[ $# -eq 0 ]]; then
+        printf '[]\n'
+        return 0
+    fi
+
+    jq -cn '$ARGS.positional' --args "$@"
+}
+
 # Record a change with all metadata
 record_change() {
     local category="$1"

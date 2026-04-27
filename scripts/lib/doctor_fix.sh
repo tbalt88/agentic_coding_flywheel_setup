@@ -669,6 +669,10 @@ doctor_fix_record_change_or_rollback() {
     return 1
 }
 
+doctor_fix_files_json() {
+    autofix_files_json "$@"
+}
+
 doctor_fix_require_security() {
     if [[ "${DOCTOR_FIX_SECURITY_READY:-false}" == "true" ]]; then
         return 0
@@ -818,7 +822,7 @@ fix_path_ordering() {
         false \
         "path" "Added PATH ordering to $target_file" \
         "${restore_command:-if [[ -f '$target_file' ]]; then sed -i '/$marker/,+1d' '$target_file'; fi}" \
-        false "info" "[\"$target_file\"]" "$(echo "${backup_json:-[]}" | jq -c 'if type == \"object\" then [.] else . end' 2>/dev/null || echo '[]')" "[]"; then
+        false "info" "$(doctor_fix_files_json "$target_file")" "$(echo "${backup_json:-[]}" | jq -c 'if type == \"object\" then [.] else . end' 2>/dev/null || echo '[]')" "[]"; then
         FIX_FAILED=$((FIX_FAILED + 1))
         return 1
     fi
@@ -889,7 +893,7 @@ fix_config_copy() {
         false \
         "config" "Copied config: $(basename "$src")" \
         "$rollback_command" \
-        false "info" "[\"$dest\"]" "[]" "[]"; then
+        false "info" "$(doctor_fix_files_json "$dest")" "[]" "[]"; then
         FIX_FAILED=$((FIX_FAILED + 1))
         return 1
     fi
@@ -1047,7 +1051,7 @@ fix_symlink_create() {
         false \
         "symlink" "Created symlink: $(basename "$symlink")" \
         "$rollback_command" \
-        false "info" "[\"$symlink\"]" "[]" "[]"; then
+        false "info" "$(doctor_fix_files_json "$symlink")" "[]" "[]"; then
         FIX_FAILED=$((FIX_FAILED + 1))
         return 1
     fi
@@ -1114,7 +1118,7 @@ fix_plugin_clone() {
             false \
             "plugin" "Cloned zsh plugin: $plugin_name" \
             "$rollback_command" \
-            false "info" "[\"$target_dir\"]" "[]" "[]"; then
+            false "info" "$(doctor_fix_files_json "$target_dir")" "[]" "[]"; then
             FIX_FAILED=$((FIX_FAILED + 1))
             return 1
         fi
@@ -1196,7 +1200,7 @@ fix_acfs_sourcing() {
         false \
         "config" "Added ACFS sourcing to .zshrc" \
         "${restore_command:-if [[ -f '$zshrc' ]]; then sed -i '/$marker/,+1d' '$zshrc'; fi}" \
-        false "info" "[\"$zshrc\"]" "$(echo "${backup_json:-[]}" | jq -c 'if type == \"object\" then [.] else . end' 2>/dev/null || echo '[]')" "[]"; then
+        false "info" "$(doctor_fix_files_json "$zshrc")" "$(echo "${backup_json:-[]}" | jq -c 'if type == \"object\" then [.] else . end' 2>/dev/null || echo '[]')" "[]"; then
         FIX_FAILED=$((FIX_FAILED + 1))
         return 1
     fi
@@ -1383,7 +1387,7 @@ fix_stack_install() {
             false \
             "install" "Installed $binary_name" \
             "# Manual rollback required: remove $binary_name if undesired" \
-            false "info" "[\"$installed_path\"]" "[]" "[]"; then
+            false "info" "$(doctor_fix_files_json "$installed_path")" "[]" "[]"; then
             hash -r
             FIX_FAILED=$((FIX_FAILED + 1))
             return 1
@@ -1432,7 +1436,7 @@ fix_verified_install() {
                 false \
                 "install" "Installed $binary_name via verified installer" \
                 "# Manual rollback required: remove $binary_name if undesired" \
-                false "info" "[\"$installed_path\"]" "[]" "[]"; then
+                false "info" "$(doctor_fix_files_json "$installed_path")" "[]" "[]"; then
                 hash -r
                 FIX_FAILED=$((FIX_FAILED + 1))
                 return 1
@@ -1600,7 +1604,7 @@ fix_ssh_keepalive() {
         true \
         "config" "Configured SSH keepalive in $sshd_config" \
         "${restore_command:-$fallback_restore_command}; $sudo_cmd systemctl reload ssh 2>/dev/null || $sudo_cmd systemctl reload sshd 2>/dev/null || true" \
-        true "info" "[\"$sshd_config\"]" "$(echo "${backup_json:-[]}" | jq -c 'if type == \"object\" then [.] else . end' 2>/dev/null || echo '[]')" "[]"; then
+        true "info" "$(doctor_fix_files_json "$sshd_config")" "$(echo "${backup_json:-[]}" | jq -c 'if type == \"object\" then [.] else . end' 2>/dev/null || echo '[]')" "[]"; then
         FIX_FAILED=$((FIX_FAILED + 1))
         return 1
     fi
@@ -1942,7 +1946,7 @@ fix_mcp_agent_mail() {
                     false \
                     "symlink" "Ensured am resolves to installed Rust CLI" \
                     "$symlink_restore_command" \
-                    false "info" "[\"$am_dst\"]" "$symlink_backup_json" "[]"; then
+                    false "info" "$(doctor_fix_files_json "$am_dst")" "$symlink_backup_json" "[]"; then
                     FIX_FAILED=$((FIX_FAILED + 1))
                     return 1
                 fi
@@ -1993,7 +1997,7 @@ fix_mcp_agent_mail() {
                     false \
                     "install" "Installed MCP Agent Mail CLI via verified installer" \
                     "# Manual rollback required: remove $runtime_home/mcp_agent_mail if undesired" \
-                    false "info" "[\"$runtime_home/mcp_agent_mail\"]" "[]" "[]"; then
+                    false "info" "$(doctor_fix_files_json "$runtime_home/mcp_agent_mail")" "[]" "[]"; then
                     FIX_FAILED=$((FIX_FAILED + 1))
                     return 1
                 fi
@@ -2031,7 +2035,7 @@ fix_mcp_agent_mail() {
             false \
             "repair" "Ran MCP Agent Mail database repair" \
             "# Manual rollback required: restore Agent Mail storage from backup if needed" \
-            false "info" "[\"$storage_root\"]" "[]" "[]"; then
+            false "info" "$(doctor_fix_files_json "$storage_root")" "[]" "[]"; then
             FIX_FAILED=$((FIX_FAILED + 1))
             return 1
         fi
@@ -2050,7 +2054,7 @@ fix_mcp_agent_mail() {
             false \
             "repair" "Applied MCP Agent Mail doctor fixes" \
             "# Manual rollback required: restore Agent Mail storage/config from backup if needed" \
-            false "info" "[\"$storage_root\"]" "[]" "[]"; then
+            false "info" "$(doctor_fix_files_json "$storage_root")" "[]" "[]"; then
             FIX_FAILED=$((FIX_FAILED + 1))
             return 1
         fi
@@ -2074,7 +2078,7 @@ fix_mcp_agent_mail() {
             false \
             "service" "Repaired MCP Agent Mail managed service" \
             "# Manual rollback required: restore Agent Mail user service files if needed" \
-            true "info" "[\"$unit_file\"]" "[]" "[]"; then
+            true "info" "$(doctor_fix_files_json "$unit_file")" "[]" "[]"; then
             FIX_FAILED=$((FIX_FAILED + 1))
             return 1
         fi

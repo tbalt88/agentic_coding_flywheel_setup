@@ -1479,6 +1479,29 @@ test_record_change_fails_when_append_atomic_fails() {
     return 0
 }
 
+test_autofix_files_json_escapes_special_paths() {
+    local tricky_path='/tmp/acfs "quoted" path\bin'
+    local files_json=""
+    local decoded=""
+
+    files_json="$(autofix_files_json "$tricky_path")" || {
+        echo "  autofix_files_json should encode valid path arguments"
+        return 1
+    }
+
+    decoded="$(printf '%s' "$files_json" | jq -r '.[0]' 2>/dev/null)" || {
+        echo "  Encoded affected-files JSON was not parseable"
+        return 1
+    }
+
+    if [[ "$decoded" != "$tricky_path" ]]; then
+        echo "  Encoded affected-files JSON did not round-trip special path characters"
+        return 1
+    fi
+
+    return 0
+}
+
 # Test: Single backup objects are normalized into backup arrays
 test_record_change_normalizes_single_backup_object() {
     setup_test_env
@@ -1496,7 +1519,7 @@ test_record_change_normalizes_single_backup_object() {
     backup_json=$(create_backup "$test_file" "test")
     expected_backup_path=$(echo "$backup_json" | jq -r '.backup')
 
-    change_id=$(record_change "test" "Normalized backup" "rm -f '$test_file'" "false" "info" "[\"$test_file\"]" "$backup_json" "[]" 2>/dev/null)
+    change_id=$(record_change "test" "Normalized backup" "rm -f '$test_file'" "false" "info" "$(autofix_files_json "$test_file")" "$backup_json" "[]" 2>/dev/null)
     backup_type=$(jq -r --arg id "$change_id" 'select(.id == $id) | (.backups | type)' "$ACFS_CHANGES_FILE")
     backup_len=$(jq -r --arg id "$change_id" 'select(.id == $id) | (.backups | length)' "$ACFS_CHANGES_FILE")
     stored_backup_path=$(jq -r --arg id "$change_id" 'select(.id == $id) | .backups[0].backup' "$ACFS_CHANGES_FILE")
@@ -2309,6 +2332,7 @@ main() {
     run_test test_record_change
     run_test test_record_change_requires_active_session
     run_test test_record_change_fails_when_append_atomic_fails
+    run_test test_autofix_files_json_escapes_special_paths
     run_test test_record_change_normalizes_single_backup_object
     run_test test_multiple_changes_order
     run_test test_undo_change

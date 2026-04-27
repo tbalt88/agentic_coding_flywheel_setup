@@ -260,7 +260,7 @@ autofix_nvm_fix() {
                 "$restore_command" \
                 false \
                 "warning" \
-                "[\"$nvm_dir\"]" \
+                "$(autofix_files_json "$nvm_dir")" \
                 "[$backup_info]" \
                 '[]' >/dev/null; then
                 log_error "[AUTO-FIX:nvm] Failed to record nvm directory migration for $nvm_dir"
@@ -333,7 +333,7 @@ autofix_nvm_fix() {
                 "$restore_command" \
                 false \
                 "info" \
-                "[\"$config\"]" \
+                "$(autofix_files_json "$config")" \
                 "[$config_backup]" \
                 '[]' >/dev/null; then
                 log_error "[AUTO-FIX:nvm] Failed to record shell config cleanup for $config"
@@ -556,7 +556,7 @@ autofix_pyenv_fix() {
                 "$restore_command" \
                 false \
                 "warning" \
-                "[\"$pyenv_root\"]" \
+                "$(autofix_files_json "$pyenv_root")" \
                 "[$backup_info]" \
                 '[]' >/dev/null; then
                 log_error "[AUTO-FIX:pyenv] Failed to record pyenv directory migration for $pyenv_root"
@@ -624,7 +624,7 @@ autofix_pyenv_fix() {
                 "$restore_command" \
                 false \
                 "info" \
-                "[\"$config\"]" \
+                "$(autofix_files_json "$config")" \
                 "[$config_backup]" \
                 '[]' >/dev/null; then
                 log_error "[AUTO-FIX:pyenv] Failed to record shell config cleanup for $config"

@@ -325,7 +325,7 @@ _autofix_remove_stale_locks() {
                 "# Lock files are recreated automatically by apt" \
                 true \
                 "info" \
-                "[\"$lock\"]" \
+                "$(autofix_files_json "$lock")" \
                 '[]' \
                 '[]' >/dev/null; then
                 log_error "[AUTO-FIX:unattended] Failed to record stale lock removal for $lock"
