@@ -378,6 +378,38 @@ else
 fi
 
 # ============================================================
+section "Test 3f2: ACFS self-update re-exec marker does not count as skipped work"
+# ============================================================
+self_update_done_output=$(
+    bash -c '
+        source "'"$UPDATE_SH"'"
+
+        QUIET=true
+        UPDATE_SELF=true
+        ACFS_SELF_UPDATE_DONE=true
+        UPDATE_LOG_FILE="/dev/null"
+        SUCCESS_COUNT=0
+        SKIP_COUNT=0
+        FAIL_COUNT=0
+        NO_COLOR=1
+        RED="" GREEN="" YELLOW="" CYAN="" BOLD="" DIM="" NC=""
+
+        update_acfs_self
+        printf "SUCCESS_COUNT=%s\n" "$SUCCESS_COUNT"
+        printf "SKIP_COUNT=%s\n" "$SKIP_COUNT"
+        printf "FAIL_COUNT=%s\n" "$FAIL_COUNT"
+    ' 2>&1
+) || true
+
+if echo "$self_update_done_output" | grep -q '^SUCCESS_COUNT=0$' \
+    && echo "$self_update_done_output" | grep -q '^SKIP_COUNT=0$' \
+    && echo "$self_update_done_output" | grep -q '^FAIL_COUNT=0$'; then
+    pass "ACFS self-update re-exec marker stays out of summary counters"
+else
+    fail "ACFS self-update re-exec marker polluted summary counters: $self_update_done_output"
+fi
+
+# ============================================================
 section "Test 3g: ACFS self-update repairs upstream-derived dirty checkout"
 # ============================================================
 self_update_repair_output=$(

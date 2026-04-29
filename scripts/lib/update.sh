@@ -3265,7 +3265,7 @@ update_acfs_self() {
 
     # Skip if already done (prevents infinite re-exec loops)
     if [[ "$ACFS_SELF_UPDATE_DONE" == "true" ]]; then
-        log_item "skip" "ACFS self-update" "already completed"
+        log_item "info" "ACFS self-update" "already completed"
         return 0
     fi
 
