@@ -3112,16 +3112,21 @@ update_refresh_installed_security() {
 # Requires: git fetch origin main has already succeeded.
 # ------------------------------------------------------------
 _acfs_refresh_security_from_fetched_remote() {
+    # First arg is the canonical primary remote branch. Defaults to `main`
+    # for backward compatibility, but callers in update_acfs_self() pass the
+    # branch the install is checked out on (main or master — the two are
+    # maintained as parallel refs with identical SHAs).
+    local _sec_remote_branch="${1:-main}"
     local _sec_files_refreshed=false
     local _sec_relpath
     for _sec_relpath in checksums.yaml scripts/lib/security.sh; do
         local _sec_target="$ACFS_REPO_ROOT/$_sec_relpath"
         local _sec_tmp=""
         _sec_tmp="$(mktemp "${TMPDIR:-/tmp}/acfs-sec-refresh.XXXXXX" 2>/dev/null)" || continue
-        if git -C "$ACFS_REPO_ROOT" show "origin/main:$_sec_relpath" > "$_sec_tmp" 2>/dev/null; then
+        if git -C "$ACFS_REPO_ROOT" show "origin/${_sec_remote_branch}:$_sec_relpath" > "$_sec_tmp" 2>/dev/null; then
             if [[ -s "$_sec_tmp" ]] && ! cmp -s "$_sec_tmp" "$_sec_target" 2>/dev/null; then
                 cp -f "$_sec_tmp" "$_sec_target" 2>/dev/null && _sec_files_refreshed=true
-                log_to_file "Refreshed $_sec_relpath from origin/main (bypassing full pull)"
+                log_to_file "Refreshed $_sec_relpath from origin/${_sec_remote_branch} (bypassing full pull)"
             fi
         fi
         rm -f "$_sec_tmp" 2>/dev/null
@@ -3136,7 +3141,11 @@ _acfs_refresh_security_from_fetched_remote() {
 }
 
 _acfs_remote_main_head() {
-    git -C "$ACFS_REPO_ROOT" ls-remote --heads origin main 2>/dev/null | awk 'NR==1 { print $1 }'
+    # First arg is the canonical primary remote branch. Defaults to `main`
+    # for backward compatibility (e.g. for any callers that haven't been
+    # updated to pass it explicitly).
+    local _head_remote_branch="${1:-main}"
+    git -C "$ACFS_REPO_ROOT" ls-remote --heads origin "$_head_remote_branch" 2>/dev/null | awk 'NR==1 { print $1 }'
 }
 
 _acfs_repo_root_is_runtime_acfs_home() {
@@ -3395,7 +3404,7 @@ update_acfs_self() {
         fi
         # Still fetch and refresh security files so checksums stay fresh
         if git -C "$ACFS_REPO_ROOT" fetch origin "$remote_branch" --quiet 2>/dev/null; then
-            _acfs_refresh_security_from_fetched_remote
+            _acfs_refresh_security_from_fetched_remote "$remote_branch"
         fi
         return 0
     fi
@@ -3410,7 +3419,7 @@ update_acfs_self() {
     local_head=$(git -C "$ACFS_REPO_ROOT" rev-parse HEAD 2>/dev/null) || true
 
     if update_is_read_only_mode; then
-        remote_head="$(_acfs_remote_main_head)"
+        remote_head="$(_acfs_remote_main_head "$remote_branch")"
         if [[ -z "$local_head" ]] || [[ -z "$remote_head" ]]; then
             log_item "warn" "ACFS self-update" "failed to compare versions in dry-run"
             return 0
@@ -3419,7 +3428,7 @@ update_acfs_self() {
         if [[ "$local_head" == "$remote_head" ]]; then
             log_item "ok" "ACFS $ACFS_VERSION_DISPLAY" "already up to date"
         else
-            log_item "ok" "ACFS" "would update (remote main differs)"
+            log_item "ok" "ACFS" "would update (remote ${remote_branch} differs)"
         fi
         return 0
     fi
@@ -3482,7 +3491,7 @@ update_acfs_self() {
         else
             log_item "warn" "ACFS self-update" "tracked files have local modifications; skipping full pull"
             log_to_file "Self-update skipped: working tree has tracked modifications — refreshing security files only"
-            _acfs_refresh_security_from_fetched_remote
+            _acfs_refresh_security_from_fetched_remote "$remote_branch"
             return 0
         fi
     fi
@@ -3493,7 +3502,7 @@ update_acfs_self() {
         if ! git -C "$ACFS_REPO_ROOT" pull --ff-only origin "$remote_branch" 2>/dev/null; then
             log_item "warn" "ACFS self-update" "ff-only pull failed (branch divergence?); refreshing security files"
             log_to_file "Self-update skipped: git pull --ff-only failed — refreshing security files only"
-            _acfs_refresh_security_from_fetched_remote
+            _acfs_refresh_security_from_fetched_remote "$remote_branch"
             return 0
         fi
     fi
