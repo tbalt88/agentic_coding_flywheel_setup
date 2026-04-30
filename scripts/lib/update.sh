@@ -4676,8 +4676,8 @@ update_stack() {
         fi
     fi
 
-    # RCH (Remote Compilation Helper) - always install/update
-    run_cmd "RCH" update_run_verified_installer rch
+    # RCH (Remote Compilation Helper) - always install/update and keep daemon/fleet setup active
+    run_cmd "RCH" update_run_verified_installer rch --easy-mode
 
     # GIIL (Google Image Inline Linker) - always install/update
     run_cmd "GIIL" update_run_verified_installer giil

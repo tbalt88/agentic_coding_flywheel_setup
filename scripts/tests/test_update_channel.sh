@@ -819,6 +819,27 @@ else
 fi
 
 # ============================================================
+section "Test 6b: RCH update keeps daemon and fleet setup active"
+# ============================================================
+if grep -Eq 'run_cmd "RCH" update_run_verified_installer rch --easy-mode([[:space:]]|$)' "$UPDATE_SH"; then
+    pass "RCH stack update invokes installer with --easy-mode"
+else
+    fail "RCH stack update still invokes bare installer without --easy-mode"
+fi
+
+rch_manifest_block=$(awk '
+    /^[[:space:]]*- id: stack\.rch$/ { in_block=1 }
+    in_block { print }
+    in_block && /^[[:space:]]*verify:/ { exit }
+' "$REPO_ROOT/acfs.manifest.yaml")
+
+if echo "$rch_manifest_block" | grep -Fq 'args: ["--easy-mode"]'; then
+    pass "RCH manifest verified installer records --easy-mode"
+else
+    fail "RCH manifest verified installer is missing --easy-mode"
+fi
+
+# ============================================================
 section "Test 7: Verified installer recovers from stale checksum metadata"
 # ============================================================
 checksum_recovery_output=$(
