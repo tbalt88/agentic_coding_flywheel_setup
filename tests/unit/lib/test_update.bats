@@ -850,7 +850,7 @@ EOF
     run grep -F 'run_cmd_bun_with_retry "Vercel CLI" "$bun_bin" install -g --trust vercel@latest' "$update"
     assert_failure
 
-    run grep -F 'run_cmd_with_retry_status "Meta Skill" update_run_verified_installer ms --easy-mode || true' "$update"
+    run grep -F 'update_run_verified_installer_or_existing_on_transient "Meta Skill" ms ms ms --easy-mode || true' "$update"
     assert_success
 
     run grep -F 'run_cmd "Meta Skill" update_run_verified_installer ms --easy-mode' "$update"
