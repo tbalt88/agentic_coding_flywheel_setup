@@ -989,9 +989,59 @@ EOF
 
     run update_stack
     assert_success
-    assert_output --partial "[FAIL] MCP Agent Mail"
+    assert_output --partial "[fail] MCP Agent Mail"
     [[ ! -f "$HOME/mcp-agent-mail-installer-ran" ]]
     [[ -f "$HOME/apr-ran" ]]
+}
+
+@test "update_stack honors abort-on-failure for MCP Agent Mail target-home failure" {
+    QUIET=true
+    VERBOSE=false
+    DRY_RUN=false
+    UPDATE_STACK=true
+    ABORT_ON_FAILURE=true
+    ACFS_UPDATE_RETRY_MAX_ATTEMPTS=1
+    UPDATE_LOG_FILE="$HOME/update.log"
+    SUCCESS_COUNT=0
+    FAIL_COUNT=0
+    SKIP_COUNT=0
+
+    declare -gA KNOWN_INSTALLERS=([mcp_agent_mail]="https://example.test/install-am.sh")
+
+    update_require_security() { return 0; }
+    get_checksum() { printf '%s\n' "abc123"; }
+    verify_checksum() {
+        printf '%s\n' '#!/usr/bin/env bash'
+        printf '%s\n' 'exit 0'
+    }
+    update_target_user() { printf '%s\n' "missinguser"; }
+    update_target_home() { return 1; }
+    update_run_logged_passthrough() {
+        : > "$HOME/mcp-agent-mail-installer-ran"
+        return 0
+    }
+    update_source_stack_lib() { return 0; }
+    capture_version_before() { :; }
+    capture_version_after() { return 1; }
+    update_binary_exists() { return 1; }
+    update_run_verified_installer() {
+        case "${1:-}" in
+            apr)
+                : > "$HOME/apr-ran"
+                ;;
+        esac
+        return 0
+    }
+    update_run_verified_installer_with_env() { return 0; }
+    update_run_slb_source_install() { return 0; }
+    update_run_fsfs_installer() { return 0; }
+
+    run update_stack
+    assert_failure
+    assert_output --partial "[fail] MCP Agent Mail"
+    assert_output --partial "Aborting due to failure (--abort-on-failure)"
+    [[ ! -f "$HOME/mcp-agent-mail-installer-ran" ]]
+    [[ ! -f "$HOME/apr-ran" ]]
 }
 
 @test "self-update dirty fast-forward uses the selected remote branch" {

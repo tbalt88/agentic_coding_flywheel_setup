@@ -4759,13 +4759,9 @@ update_stack() {
                 fi
 
                 if [[ -n "$target_context_error" ]]; then
-                    if [[ "$QUIET" != "true" ]] && [[ "$VERBOSE" != "true" ]]; then
-                        printf "\033[1A\033[2K  ${RED}[FAIL]${NC} %s\n" "MCP Agent Mail"
-                    else
-                        printf "  ${RED}[FAIL]${NC} %s\n" "MCP Agent Mail"
-                    fi
-                    log_to_file "Failed: MCP Agent Mail - $target_context_error"
-                    ((FAIL_COUNT += 1))
+                    rm -f "$tmp_install" 2>/dev/null || true
+                    tmp_install=""
+                    update_finish_cmd_fail "MCP Agent Mail" "$target_context_error"
                 elif update_run_logged_passthrough update_run_in_target_context "" bash "$tmp_install" --dest "$target_home/mcp_agent_mail" --yes; then
                     if update_source_stack_lib; then
                         ACFS_STACK_TRUST_TARGET_HOME=true TARGET_USER="$target_user" TARGET_HOME="$target_home" _stack_repair_agent_mail_cli_symlink >/dev/null 2>&1 || true
@@ -4781,19 +4777,15 @@ update_stack() {
                         log_to_file "Success: MCP Agent Mail"
                         ((SUCCESS_COUNT += 1))
                     else
-                        if [[ "$QUIET" != "true" ]] && [[ "$VERBOSE" != "true" ]]; then
-                            printf "\033[1A\033[2K  ${RED}[FAIL]${NC} %s\n" "MCP Agent Mail"
-                        else
-                            printf "  ${RED}[FAIL]${NC} %s\n" "MCP Agent Mail"
-                        fi
-                        log_to_file "Failed: MCP Agent Mail - service setup/readiness failed"
-                        ((FAIL_COUNT += 1))
+                        rm -f "$tmp_install" 2>/dev/null || true
+                        tmp_install=""
+                        update_finish_cmd_fail "MCP Agent Mail" "service setup/readiness failed"
                     fi
                 else
                     log_item "fail" "MCP Agent Mail" "installer failed"
                 fi
 
-                rm -f "$tmp_install" 2>/dev/null || true
+                [[ -n "$tmp_install" ]] && rm -f "$tmp_install" 2>/dev/null || true
             else
                 rm -f "$tmp_install"
                 log_item "fail" "MCP Agent Mail" "verification failed"
