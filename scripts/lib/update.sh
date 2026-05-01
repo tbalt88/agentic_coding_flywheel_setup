@@ -4747,10 +4747,26 @@ update_stack() {
                 # Use --dest and exact target dir just like the manifest
                 local target_user=""
                 local target_home=""
-                target_user="$(update_target_user)"
-                target_home="$(update_target_home "$target_user")"
+                local target_context_error=""
+                target_user="$(update_target_user 2>/dev/null || true)"
+                if [[ -z "$target_user" ]]; then
+                    target_context_error="unable to resolve target user"
+                else
+                    target_home="$(update_target_home "$target_user" 2>/dev/null || true)"
+                    if [[ -z "$target_home" || "$target_home" != /* || "$target_home" == "/" ]]; then
+                        target_context_error="unable to resolve target home for '$target_user'"
+                    fi
+                fi
 
-                if update_run_logged_passthrough update_run_in_target_context "" bash "$tmp_install" --dest "$target_home/mcp_agent_mail" --yes; then
+                if [[ -n "$target_context_error" ]]; then
+                    if [[ "$QUIET" != "true" ]] && [[ "$VERBOSE" != "true" ]]; then
+                        printf "\033[1A\033[2K  ${RED}[FAIL]${NC} %s\n" "MCP Agent Mail"
+                    else
+                        printf "  ${RED}[FAIL]${NC} %s\n" "MCP Agent Mail"
+                    fi
+                    log_to_file "Failed: MCP Agent Mail - $target_context_error"
+                    ((FAIL_COUNT += 1))
+                elif update_run_logged_passthrough update_run_in_target_context "" bash "$tmp_install" --dest "$target_home/mcp_agent_mail" --yes; then
                     if update_source_stack_lib; then
                         ACFS_STACK_TRUST_TARGET_HOME=true TARGET_USER="$target_user" TARGET_HOME="$target_home" _stack_repair_agent_mail_cli_symlink >/dev/null 2>&1 || true
                     fi
@@ -4767,7 +4783,7 @@ update_stack() {
                     else
                         if [[ "$QUIET" != "true" ]] && [[ "$VERBOSE" != "true" ]]; then
                             printf "\033[1A\033[2K  ${RED}[FAIL]${NC} %s\n" "MCP Agent Mail"
-                        elif [[ "$QUIET" != "true" ]]; then
+                        else
                             printf "  ${RED}[FAIL]${NC} %s\n" "MCP Agent Mail"
                         fi
                         log_to_file "Failed: MCP Agent Mail - service setup/readiness failed"
