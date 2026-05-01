@@ -1474,12 +1474,21 @@ update_retry_max_attempts() {
         return 0
     fi
 
+    while [[ "${#raw}" -gt 1 && "$raw" == 0* ]]; do
+        raw="${raw#0}"
+    done
+
     if [[ "$raw" =~ ^0+$ ]]; then
         printf '1\n'
         return 0
     fi
 
-    printf '%s\n' "$raw"
+    if [[ "${#raw}" -gt 2 ]] || ((10#$raw > 20)); then
+        printf '20\n'
+        return 0
+    fi
+
+    printf '%d\n' "$((10#$raw))"
 }
 
 update_retry_sleep_seconds() {
@@ -1491,7 +1500,15 @@ update_retry_sleep_seconds() {
 
     if [[ -n "${ACFS_UPDATE_RETRY_SLEEP_SECONDS:-}" ]]; then
         if [[ "$ACFS_UPDATE_RETRY_SLEEP_SECONDS" =~ ^[0-9]+$ ]]; then
-            printf '%s\n' "$ACFS_UPDATE_RETRY_SLEEP_SECONDS"
+            local raw_sleep="$ACFS_UPDATE_RETRY_SLEEP_SECONDS"
+            while [[ "${#raw_sleep}" -gt 1 && "$raw_sleep" == 0* ]]; do
+                raw_sleep="${raw_sleep#0}"
+            done
+            if [[ "${#raw_sleep}" -gt 3 ]] || ((10#$raw_sleep > 300)); then
+                printf '300\n'
+            else
+                printf '%d\n' "$((10#$raw_sleep))"
+            fi
         else
             printf '%s\n' "$((attempt * 2))"
         fi

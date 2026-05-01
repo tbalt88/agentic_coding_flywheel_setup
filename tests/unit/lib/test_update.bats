@@ -9196,6 +9196,16 @@ EOF
     run update_retry_max_attempts
     assert_success
     assert_output "2"
+
+    export ACFS_UPDATE_RETRY_MAX_ATTEMPTS=08
+    run update_retry_max_attempts
+    assert_success
+    assert_output "8"
+
+    export ACFS_UPDATE_RETRY_MAX_ATTEMPTS=999
+    run update_retry_max_attempts
+    assert_success
+    assert_output "20"
 }
 
 @test "update_retry_sleep_seconds: defaults malformed values and preserves zero override" {
@@ -9218,6 +9228,16 @@ EOF
     run update_retry_sleep_seconds 3
     assert_success
     assert_output "0"
+
+    export ACFS_UPDATE_RETRY_SLEEP_SECONDS=08
+    run update_retry_sleep_seconds 3
+    assert_success
+    assert_output "8"
+
+    export ACFS_UPDATE_RETRY_SLEEP_SECONDS=9999
+    run update_retry_sleep_seconds 3
+    assert_success
+    assert_output "300"
 }
 
 @test "update_run_command_capture_with_retry: malformed retry sleep still retries transient failure" {
