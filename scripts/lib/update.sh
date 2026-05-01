@@ -248,6 +248,7 @@ fi
 SUCCESS_COUNT=0
 SKIP_COUNT=0
 FAIL_COUNT=0
+UPDATE_LAST_COMMAND_OUTPUT=""
 
 # Flags
 UPDATE_APT=true
@@ -385,17 +386,32 @@ ensure_path() {
 }
 
 update_source_stack_lib() {
+    local runtime_acfs_home=""
+    local candidate=""
+    local -a candidates=()
+
     if declare -f _stack_configure_agent_mail_service >/dev/null 2>&1; then
         return 0
     fi
 
-    if [[ -r "$SCRIPT_DIR/stack.sh" ]]; then
-        # shellcheck source=stack.sh
-        source "$SCRIPT_DIR/stack.sh"
-        return 0
-    fi
+    runtime_acfs_home="$(update_runtime_acfs_home 2>/dev/null || true)"
+    candidates+=("$SCRIPT_DIR/stack.sh")
+    [[ -n "$runtime_acfs_home" ]] && candidates+=("$runtime_acfs_home/scripts/lib/stack.sh")
+    candidates+=(
+        "$ACFS_REPO_ROOT/scripts/lib/stack.sh"
+        "/data/projects/agentic_coding_flywheel_setup/scripts/lib/stack.sh"
+        "/dp/agentic_coding_flywheel_setup/scripts/lib/stack.sh"
+    )
 
-    echo "Stack library not found at $SCRIPT_DIR/stack.sh" >&2
+    for candidate in "${candidates[@]}"; do
+        [[ -n "$candidate" && -r "$candidate" ]] || continue
+        # shellcheck source=stack.sh
+        source "$candidate"
+        log_to_file "Loaded stack.sh from $candidate"
+        return 0
+    done
+
+    echo "Stack library not found in deployed or repo paths" >&2
     return 1
 }
 
@@ -1006,6 +1022,21 @@ update_finish_cmd_ok() {
     ((SUCCESS_COUNT += 1))
 }
 
+update_finish_cmd_skip() {
+    local desc="$1"
+    local details="${2:-}"
+
+    if [[ "$QUIET" != "true" ]] && [[ "$VERBOSE" != "true" ]]; then
+        printf "\033[1A\033[2K  ${DIM}[skip]${NC} %s\n" "$desc"
+    elif [[ "$QUIET" != "true" ]]; then
+        printf "  ${DIM}[skip]${NC} %s\n" "$desc"
+    fi
+    [[ -n "$details" && "$QUIET" != "true" ]] && printf "       ${DIM}%s${NC}\n" "$details"
+
+    log_to_file "Skipped: $desc${details:+ - $details}"
+    ((SKIP_COUNT += 1))
+}
+
 update_finish_cmd_fail() {
     local desc="$1"
     local details="${2:-}"
@@ -1066,12 +1097,14 @@ update_run_command_capture_with_retry() {
     local output=""
     local cmd_display=""
     cmd_display=$(printf '%q ' "$@")
+    UPDATE_LAST_COMMAND_OUTPUT=""
 
     log_to_file "Running (captured with retry): $cmd_display"
 
     while [[ $attempt -le $max_attempts ]]; do
         exit_code=0
         output=$("$@" 2>&1) || exit_code=$?
+        UPDATE_LAST_COMMAND_OUTPUT="$output"
         [[ -n "$output" ]] && log_to_file "Output: $output"
         [[ "$VERBOSE" == "true" && "$QUIET" != "true" && -n "$output" ]] && printf "%s\n" "$output"
 
@@ -1210,6 +1243,11 @@ update_run_verified_installer_with_shell_repair() {
 
     if update_shell_tool_state_improved "$before_path" "$before_version" "$after_path" "$after_version"; then
         update_finish_cmd_ok "$desc" "verified repaired binary at ${after_path} (${after_version})"
+        return 0
+    fi
+
+    if update_is_transient_failure_output "$UPDATE_LAST_COMMAND_OUTPUT" && [[ -n "$after_path" && -x "$after_path" && "$after_version" != "unknown" ]]; then
+        update_finish_cmd_skip "$desc" "upstream temporarily unavailable; existing ${tool} ${after_version} remains installed"
         return 0
     fi
 
@@ -1424,7 +1462,7 @@ update_is_transient_failure_output() {
     [[ -n "$output" ]] || return 1
 
     printf '%s\n' "$output" | grep -qiE \
-        'failed to map segment|ENOENT|EACCES|EAGAIN|Connection reset|timed out|rate limit|too many requests|429|503|502|500|TLS|temporary failure|connection refused|reset by peer|network is unreachable|could not resolve host|curl:|wget:|failed to download|download.*failed'
+        'failed to map segment|ENOENT|EACCES|EAGAIN|Connection reset|timed out|rate limit|API rate limit exceeded|too many requests|429|503|502|500|TLS|temporary failure|connection refused|reset by peer|network is unreachable|could not resolve host|curl:|wget:|failed to download|download.*failed|unable to fetch some archives|could not fetch release info|version [^[:space:]]+ was not found'
 }
 
 update_retry_sleep_seconds() {
@@ -1582,6 +1620,32 @@ run_cmd_sudo() {
         return 0
     fi
     run_cmd "$desc" "$@"
+}
+
+run_cmd_sudo_with_retry_status() {
+    local desc="$1"
+    shift
+
+    local sudo_cmd
+    sudo_cmd=$(get_sudo)
+    if [[ -n "$sudo_cmd" ]]; then
+        run_cmd_with_retry_status "$desc" "$sudo_cmd" "$@"
+        return $?
+    fi
+    run_cmd_with_retry_status "$desc" "$@"
+}
+
+run_cmd_sudo_attempt_with_retry() {
+    local desc="$1"
+    shift
+
+    local sudo_cmd
+    sudo_cmd=$(get_sudo)
+    if [[ -n "$sudo_cmd" ]]; then
+        run_cmd_attempt_with_retry "$desc" "$sudo_cmd" "$@"
+        return $?
+    fi
+    run_cmd_attempt_with_retry "$desc" "$@"
 }
 
 update_system_binary_path() {
@@ -2422,6 +2486,8 @@ sync_acfs_deployed() {
         "scripts/lib/dashboard.sh:scripts/lib/dashboard.sh"
         "scripts/lib/support.sh:scripts/lib/support.sh"
         "scripts/lib/update.sh:scripts/lib/update.sh"
+        "scripts/lib/logging.sh:scripts/lib/logging.sh"
+        "scripts/lib/stack.sh:scripts/lib/stack.sh"
         "scripts/lib/contract.sh:scripts/lib/contract.sh"
         "scripts/lib/nightly_update.sh:scripts/lib/nightly_update.sh"
         "scripts/lib/nightly_update.sh:scripts/nightly-update.sh"
@@ -3038,6 +3104,40 @@ update_run_verified_installer() {
     local tool="$1"
     shift
     update_run_verified_installer_with_env "$tool" "" "$@"
+}
+
+update_run_verified_installer_or_existing_on_transient() {
+    local desc="$1"
+    local installer_key="$2"
+    local binary_name="$3"
+    local version_tool="$4"
+    shift 4
+
+    local exit_code=0
+    local existing_path=""
+    local existing_version="unknown"
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log_item "skip" "$desc" "dry-run: verified installer"
+        return 0
+    fi
+
+    log_item "run" "$desc"
+    update_run_command_capture_with_retry "$desc" update_run_verified_installer "$installer_key" "$@" || exit_code=$?
+    if [[ $exit_code -eq 0 ]]; then
+        update_finish_cmd_ok "$desc"
+        return 0
+    fi
+
+    existing_path="$(update_binary_path "$binary_name" 2>/dev/null || true)"
+    existing_version="$(get_version "$version_tool" 2>/dev/null || true)"
+    if update_is_transient_failure_output "$UPDATE_LAST_COMMAND_OUTPUT" && [[ -n "$existing_path" && -x "$existing_path" && -n "$existing_version" && "$existing_version" != "unknown" ]]; then
+        update_finish_cmd_skip "$desc" "upstream temporarily unavailable; existing ${binary_name} ${existing_version} remains installed"
+        return 0
+    fi
+
+    update_finish_cmd_fail "$desc" "installer exited ${exit_code}"
+    return 1
 }
 
 update_run_pcr_installer_and_verify() {
