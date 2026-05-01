@@ -1344,7 +1344,8 @@ run_cmd() {
 run_cmd_bun_with_retry() {
     local desc="$1"
     shift
-    local max_attempts=3
+    local max_attempts
+    max_attempts="$(update_retry_max_attempts)"
     local attempt=1
     local exit_code=0
     local output=""
@@ -1405,7 +1406,8 @@ run_cmd_bun_with_retry() {
         fi
 
         if [[ "$is_transient" == "true" ]] && [[ $attempt -lt $max_attempts ]]; then
-            local sleep_secs=$((attempt * 2))
+            local sleep_secs
+            sleep_secs="$(update_retry_sleep_seconds "$attempt")"
             log_to_file "Transient error detected, retrying in ${sleep_secs}s (attempt $attempt/$max_attempts)"
 
             if [[ "$QUIET" != "true" ]] && [[ "$VERBOSE" != "true" ]]; then
@@ -4136,6 +4138,8 @@ update_agents() {
         log_item "run" "Codex CLI"
         local success=false
         local output=""
+        local max_attempts
+        max_attempts="$(update_retry_max_attempts)"
         
         if [[ "$DRY_RUN" == "true" ]]; then
             log_item "skip" "Codex CLI" "dry-run"
@@ -4143,34 +4147,24 @@ update_agents() {
             for pkg in "@openai/codex@latest" "@openai/codex" "@openai/codex@$codex_fallback_version"; do
                 log_to_file "Trying bun install $pkg"
                 local attempt=1
-                local pkg_success=false
-                while [[ $attempt -le 3 ]]; do
+                while [[ $attempt -le $max_attempts ]]; do
                     if output=$(update_run_in_target_context "" "$bun_bin" install -g --trust "$pkg" 2>&1); then
-                        pkg_success=true
                         success=true
                         break 2
                     fi
-                    sleep 2
+                    if [[ $attempt -lt $max_attempts ]]; then
+                        sleep "$(update_retry_sleep_seconds "$attempt")"
+                    fi
                     attempt=$((attempt + 1))
                 done
-                log_to_file "Failed $pkg after 3 attempts: $output"
+                log_to_file "Failed $pkg after $max_attempts attempts: $output"
             done
             
             if [[ "$success" == "true" ]]; then
-                if [[ "$QUIET" != "true" ]] && [[ "$VERBOSE" != "true" ]]; then
-                    printf "\033[1A\033[2K  ${GREEN}[ok]${NC} Codex CLI\n"
-                elif [[ "$QUIET" != "true" ]]; then
-                    printf "  ${GREEN}[ok]${NC} Codex CLI\n"
-                fi
-                ((SUCCESS_COUNT += 1))
+                update_finish_cmd_ok "Codex CLI"
             else
-                if [[ "$QUIET" != "true" ]] && [[ "$VERBOSE" != "true" ]]; then
-                    printf "\033[1A\033[2K  ${RED}[FAIL]${NC} Codex CLI\n"
-                elif [[ "$QUIET" != "true" ]]; then
-                    printf "  ${RED}[FAIL]${NC} Codex CLI\n"
-                fi
                 log_to_file "All Codex install attempts failed. Last output: $output"
-                ((FAIL_COUNT += 1))
+                update_finish_cmd_fail "Codex CLI"
             fi
         fi
 

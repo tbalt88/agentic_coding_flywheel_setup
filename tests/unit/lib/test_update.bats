@@ -9451,6 +9451,94 @@ EOF
     [[ "$(cat "$HOME/retry-attempts")" == "1" ]]
 }
 
+@test "run_cmd_bun_with_retry: honors configured retry max and sleep" {
+    init_stub_dir
+    export PATH="$STUB_DIR:$PATH"
+    export ACFS_UPDATE_RETRY_MAX_ATTEMPTS=2
+    export ACFS_UPDATE_RETRY_SLEEP_SECONDS=0
+    QUIET=true
+    VERBOSE=false
+    DRY_RUN=false
+    ABORT_ON_FAILURE=false
+    UPDATE_LOG_FILE="$HOME/update.log"
+    SUCCESS_COUNT=0
+    FAIL_COUNT=0
+    SKIP_COUNT=0
+
+    cat > "$STUB_DIR/fail-bun" <<'EOF'
+#!/usr/bin/env bash
+attempts_file="$HOME/bun-retry-attempts"
+attempts=0
+if [[ -f "$attempts_file" ]]; then
+  attempts="$(cat "$attempts_file")"
+fi
+attempts=$((attempts + 1))
+printf '%s\n' "$attempts" > "$attempts_file"
+echo "download failed: rate limit exceeded" >&2
+exit 7
+EOF
+    chmod +x "$STUB_DIR/fail-bun"
+
+    sleep() {
+        printf '%s\n' "$1" >> "$HOME/bun-retry-sleeps"
+    }
+
+    run_cmd_bun_with_retry "Bun transient command" fail-bun
+
+    [[ "$(cat "$HOME/bun-retry-attempts")" == "2" ]]
+    [[ "$(cat "$HOME/bun-retry-sleeps")" == "0" ]]
+    [[ "$SUCCESS_COUNT" -eq 0 ]]
+    [[ "$FAIL_COUNT" -eq 1 ]]
+}
+
+@test "update_agents: Codex fallback failure honors abort-on-failure" {
+    export ACFS_UPDATE_RETRY_MAX_ATTEMPTS=1
+    export ACFS_UPDATE_RETRY_SLEEP_SECONDS=0
+    QUIET=true
+    VERBOSE=false
+    DRY_RUN=false
+    FORCE_MODE=false
+    ABORT_ON_FAILURE=true
+    UPDATE_AGENTS=true
+    UPDATE_LOG_FILE="$HOME/update.log"
+    SUCCESS_COUNT=0
+    FAIL_COUNT=0
+    SKIP_COUNT=0
+
+    update_target_user() { printf 'tester\n'; }
+    update_target_home() { printf '%s\n' "$HOME"; }
+    update_binary_path() {
+        case "${1:-}" in
+            bun) printf '%s\n' "$HOME/.local/bin/bun" ;;
+            *) return 1 ;;
+        esac
+    }
+    update_binary_exists() {
+        [[ "${1:-}" == "codex" ]]
+    }
+    get_version() { printf 'unknown\n'; }
+    capture_version_before() { :; }
+    capture_version_after() { return 1; }
+    update_run_in_target_context() {
+        local attempts_file="$HOME/codex-update-attempts"
+        local attempts=0
+        if [[ -f "$attempts_file" ]]; then
+            attempts="$(cat "$attempts_file")"
+        fi
+        attempts=$((attempts + 1))
+        printf '%s\n' "$attempts" > "$attempts_file"
+        echo "codex install failed" >&2
+        return 17
+    }
+    sleep() { :; }
+
+    run update_agents
+
+    assert_failure
+    assert_output --partial "Aborting due to failure (--abort-on-failure)"
+    [[ "$(cat "$HOME/codex-update-attempts")" == "3" ]]
+}
+
 @test "update_zoxide: retries transient reinstall failures before succeeding" {
     init_stub_dir
     export PATH="$STUB_DIR:$PATH"
