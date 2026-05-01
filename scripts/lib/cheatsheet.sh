@@ -541,6 +541,21 @@ cheatsheet_resolve_acfs_home() {
     fi
   fi
 
+  if [[ -n "$_CHEATSHEET_EXPLICIT_ACFS_HOME" ]] && cheatsheet_candidate_has_acfs_data "$_CHEATSHEET_EXPLICIT_ACFS_HOME"; then
+    _CHEATSHEET_RESOLVED_ACFS_HOME="$_CHEATSHEET_EXPLICIT_ACFS_HOME"
+    _CHEATSHEET_RESOLVED_ACFS_HOME_SOURCE="explicit_acfs_home"
+    printf '%s\n' "$_CHEATSHEET_RESOLVED_ACFS_HOME"
+    return 0
+  fi
+
+  candidate="$(cheatsheet_current_home_acfs_candidate 2>/dev/null || true)"
+  if [[ -n "$candidate" ]]; then
+    _CHEATSHEET_RESOLVED_ACFS_HOME="$candidate"
+    _CHEATSHEET_RESOLVED_ACFS_HOME_SOURCE="current_home"
+    printf '%s\n' "$_CHEATSHEET_RESOLVED_ACFS_HOME"
+    return 0
+  fi
+
   if [[ "$_CHEATSHEET_SYSTEM_STATE_WAS_EXPLICIT" == true ]]; then
     target_home=$(cheatsheet_read_target_home_from_state "$_CHEATSHEET_SYSTEM_STATE_FILE" 2>/dev/null || true)
     candidate="${target_home}/.acfs"
@@ -562,21 +577,6 @@ cheatsheet_resolve_acfs_home() {
         return 0
       fi
     fi
-  fi
-
-  if [[ -n "$_CHEATSHEET_EXPLICIT_ACFS_HOME" ]] && cheatsheet_candidate_has_acfs_data "$_CHEATSHEET_EXPLICIT_ACFS_HOME"; then
-    _CHEATSHEET_RESOLVED_ACFS_HOME="$_CHEATSHEET_EXPLICIT_ACFS_HOME"
-    _CHEATSHEET_RESOLVED_ACFS_HOME_SOURCE="explicit_acfs_home"
-    printf '%s\n' "$_CHEATSHEET_RESOLVED_ACFS_HOME"
-    return 0
-  fi
-
-  candidate="$(cheatsheet_current_home_acfs_candidate 2>/dev/null || true)"
-  if [[ -n "$candidate" ]]; then
-    _CHEATSHEET_RESOLVED_ACFS_HOME="$candidate"
-    _CHEATSHEET_RESOLVED_ACFS_HOME_SOURCE="current_home"
-    printf '%s\n' "$_CHEATSHEET_RESOLVED_ACFS_HOME"
-    return 0
   fi
 
   if [[ -n "$_CHEATSHEET_EXPLICIT_TARGET_HOME_RAW" ]] || [[ -n "$_CHEATSHEET_EXPLICIT_TARGET_USER_RAW" ]]; then

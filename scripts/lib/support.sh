@@ -593,6 +593,19 @@ support_resolve_acfs_home() {
         fi
     fi
 
+    if [[ -n "$_SUPPORT_ACFS_HOME" ]] && support_candidate_has_acfs_data "$_SUPPORT_ACFS_HOME"; then
+        _SUPPORT_ACFS_HOME_SOURCE="explicit_acfs_home"
+        printf '%s\n' "$_SUPPORT_ACFS_HOME"
+        return 0
+    fi
+
+    candidate="$(support_current_home_acfs_candidate 2>/dev/null || true)"
+    if [[ -n "$candidate" ]]; then
+        _SUPPORT_ACFS_HOME_SOURCE="current_home"
+        printf '%s\n' "$candidate"
+        return 0
+    fi
+
     if [[ "$SUPPORT_SYSTEM_STATE_WAS_EXPLICIT" == true ]]; then
         target_home=$(support_read_target_home_from_state "$SUPPORT_SYSTEM_STATE_FILE" 2>/dev/null || true)
         if [[ -n "$target_home" ]]; then
@@ -614,19 +627,6 @@ support_resolve_acfs_home() {
                 return 0
             fi
         fi
-    fi
-
-    if [[ -n "$_SUPPORT_ACFS_HOME" ]] && support_candidate_has_acfs_data "$_SUPPORT_ACFS_HOME"; then
-        _SUPPORT_ACFS_HOME_SOURCE="explicit_acfs_home"
-        printf '%s\n' "$_SUPPORT_ACFS_HOME"
-        return 0
-    fi
-
-    candidate="$(support_current_home_acfs_candidate 2>/dev/null || true)"
-    if [[ -n "$candidate" ]]; then
-        _SUPPORT_ACFS_HOME_SOURCE="current_home"
-        printf '%s\n' "$candidate"
-        return 0
     fi
 
     if [[ -n "$_SUPPORT_EXPLICIT_TARGET_HOME_RAW" ]] || [[ -n "$_SUPPORT_EXPLICIT_TARGET_USER_RAW" ]]; then

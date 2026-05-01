@@ -506,6 +506,12 @@ get_install_state_file() {
         return 1
     fi
 
+    candidate="$(current_user_state_file 2>/dev/null || true)"
+    if [[ -n "$candidate" ]] && [[ -f "$candidate" ]]; then
+        echo "$candidate"
+        return 0
+    fi
+
     target_home=$(read_target_home_from_state "$_CONTINUE_SYSTEM_STATE_FILE" || true)
     if [[ -n "$target_home" ]]; then
         candidate="${target_home}/.acfs/state.json"
@@ -522,12 +528,6 @@ get_install_state_file() {
             echo "$candidate"
             return 0
         fi
-    fi
-
-    candidate="$(current_user_state_file 2>/dev/null || true)"
-    if [[ -n "$candidate" ]] && [[ -f "$candidate" ]]; then
-        echo "$candidate"
-        return 0
     fi
 
     target_user=$(read_target_user_from_state "$_CONTINUE_SYSTEM_STATE_FILE" || true)

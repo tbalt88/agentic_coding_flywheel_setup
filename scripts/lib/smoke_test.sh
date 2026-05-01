@@ -311,6 +311,12 @@ _smoke_resolve_bootstrap_state_file() {
         return 0
     fi
 
+    candidate="$(_smoke_current_home_state_file 2>/dev/null || true)"
+    if [[ -n "$candidate" ]]; then
+        printf '%s\n' "$candidate"
+        return 0
+    fi
+
     if [[ -f "$_SMOKE_SYSTEM_STATE_FILE" ]]; then
         system_target_home="$(_smoke_read_state_string "$_SMOKE_SYSTEM_STATE_FILE" "target_home" 2>/dev/null || true)"
         system_target_home="$(_smoke_sanitize_abs_nonroot_path "$system_target_home" 2>/dev/null || true)"
@@ -332,12 +338,6 @@ _smoke_resolve_bootstrap_state_file() {
 
     if [[ -f "$_SMOKE_SYSTEM_STATE_FILE" ]]; then
         printf '%s\n' "$_SMOKE_SYSTEM_STATE_FILE"
-        return 0
-    fi
-
-    candidate="$(_smoke_current_home_state_file 2>/dev/null || true)"
-    if [[ -n "$candidate" ]]; then
-        printf '%s\n' "$candidate"
         return 0
     fi
 

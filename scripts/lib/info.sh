@@ -769,6 +769,19 @@ info_get_data_home() {
         fi
     fi
 
+    if [[ -n "$_INFO_EXPLICIT_ACFS_HOME" ]] && info_candidate_has_acfs_data "$_INFO_EXPLICIT_ACFS_HOME"; then
+        _INFO_RESOLVED_ACFS_HOME="$_INFO_EXPLICIT_ACFS_HOME"
+        echo "$_INFO_RESOLVED_ACFS_HOME"
+        return 0
+    fi
+
+    candidate="$(info_current_home_acfs_candidate 2>/dev/null || true)"
+    if [[ -n "$candidate" ]]; then
+        _INFO_RESOLVED_ACFS_HOME="$candidate"
+        echo "$_INFO_RESOLVED_ACFS_HOME"
+        return 0
+    fi
+
     if [[ "$_INFO_SYSTEM_STATE_WAS_EXPLICIT" == true ]]; then
         target_home=$(info_read_target_home_from_state || true)
         if [[ -n "$target_home" ]]; then
@@ -790,19 +803,6 @@ info_get_data_home() {
                 return 0
             fi
         fi
-    fi
-
-    if [[ -n "$_INFO_EXPLICIT_ACFS_HOME" ]] && info_candidate_has_acfs_data "$_INFO_EXPLICIT_ACFS_HOME"; then
-        _INFO_RESOLVED_ACFS_HOME="$_INFO_EXPLICIT_ACFS_HOME"
-        echo "$_INFO_RESOLVED_ACFS_HOME"
-        return 0
-    fi
-
-    candidate="$(info_current_home_acfs_candidate 2>/dev/null || true)"
-    if [[ -n "$candidate" ]]; then
-        _INFO_RESOLVED_ACFS_HOME="$candidate"
-        echo "$_INFO_RESOLVED_ACFS_HOME"
-        return 0
     fi
 
     if [[ -n "$_INFO_EXPLICIT_TARGET_HOME_RAW" ]] || [[ -n "$_INFO_EXPLICIT_TARGET_USER_RAW" ]]; then
