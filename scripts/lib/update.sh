@@ -4434,10 +4434,66 @@ supabase_release_update_script() {
     cat <<'EOF'
 set -euo pipefail
 
-CURL_ARGS=(--connect-timeout 30 --max-time 300 -fsSL)
-if command -v curl &>/dev/null && curl --help all 2>/dev/null | grep -q -- '--proto'; then
-  CURL_ARGS=(--proto '=https' --proto-redir '=https' --connect-timeout 30 --max-time 300 -fsSL)
+supabase_system_binary_path() {
+  local name="${1:-}"
+  local candidate=""
+
+  [[ -n "$name" ]] || return 1
+  case "$name" in
+    *[!A-Za-z0-9._+-]*) return 1 ;;
+  esac
+
+  for candidate in \
+    "/usr/bin/$name" \
+    "/bin/$name" \
+    "/usr/local/bin/$name" \
+    "/usr/local/sbin/$name" \
+    "/usr/sbin/$name" \
+    "/sbin/$name"
+  do
+    [[ -x "$candidate" ]] || continue
+    printf '%s\n' "$candidate"
+    return 0
+  done
+
+  return 1
+}
+
+SUPABASE_CURL_BIN="$(supabase_system_binary_path curl 2>/dev/null || true)"
+SUPABASE_CURL_ARGS=(--connect-timeout 30 --max-time 300 -fsSL)
+if [[ -n "$SUPABASE_CURL_BIN" ]] && curl_help="$("$SUPABASE_CURL_BIN" --help all 2>/dev/null)" && [[ "$curl_help" == *"--proto"* ]]; then
+  SUPABASE_CURL_ARGS=(--proto '=https' --proto-redir '=https' --connect-timeout 30 --max-time 300 -fsSL)
 fi
+unset curl_help
+
+supabase_curl() {
+  if [[ -z "$SUPABASE_CURL_BIN" || ! -x "$SUPABASE_CURL_BIN" ]]; then
+    echo "Supabase CLI: trusted curl not found" >&2
+    return 127
+  fi
+
+  "$SUPABASE_CURL_BIN" "${SUPABASE_CURL_ARGS[@]}" "$@"
+}
+
+supabase_sha256_file() {
+  local filepath="$1"
+  local sha_bin=""
+  local output=""
+  local hash=""
+
+  if sha_bin="$(supabase_system_binary_path sha256sum 2>/dev/null)"; then
+    output="$("$sha_bin" "$filepath")" || return 1
+  elif sha_bin="$(supabase_system_binary_path shasum 2>/dev/null)"; then
+    output="$("$sha_bin" -a 256 "$filepath")" || return 1
+  else
+    echo "Supabase CLI: no trusted SHA256 tool available (need sha256sum or shasum)" >&2
+    return 1
+  fi
+
+  read -r hash _ <<< "$output"
+  [[ -n "$hash" ]] || return 1
+  printf '%s\n' "$hash"
+}
 
 arch=""
 case "$(uname -m)" in
@@ -4449,7 +4505,7 @@ case "$(uname -m)" in
     ;;
 esac
 
-release_url="$(curl "${CURL_ARGS[@]}" -o /dev/null -w '%{url_effective}\n' "https://github.com/supabase/cli/releases/latest" 2>/dev/null | tail -n1)" || true
+release_url="$(supabase_curl -o /dev/null -w '%{url_effective}\n' "https://github.com/supabase/cli/releases/latest" 2>/dev/null)" || true
 tag="${release_url##*/}"
 if [[ -z "$tag" ]] || [[ "$tag" != v* ]]; then
   echo "Supabase CLI: failed to resolve latest release tag" >&2
@@ -4482,11 +4538,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if ! curl "${CURL_ARGS[@]}" -o "$tmp_tgz" "${base_url}/${tarball}" 2>/dev/null; then
+if ! supabase_curl -o "$tmp_tgz" "${base_url}/${tarball}" 2>/dev/null; then
   echo "Supabase CLI: failed to download ${tarball}" >&2
   exit 1
 fi
-if ! curl "${CURL_ARGS[@]}" -o "$tmp_checksums" "${base_url}/${checksums}" 2>/dev/null; then
+if ! supabase_curl -o "$tmp_checksums" "${base_url}/${checksums}" 2>/dev/null; then
   echo "Supabase CLI: failed to download checksums" >&2
   exit 1
 fi
@@ -4498,12 +4554,7 @@ if [[ -z "$expected_sha" ]]; then
 fi
 
 actual_sha=""
-if command -v sha256sum &>/dev/null; then
-  actual_sha="$(sha256sum "$tmp_tgz" | awk '{print $1}')"
-elif command -v shasum &>/dev/null; then
-  actual_sha="$(shasum -a 256 "$tmp_tgz" | awk '{print $1}')"
-else
-  echo "Supabase CLI: no SHA256 tool available (need sha256sum or shasum)" >&2
+if ! actual_sha="$(supabase_sha256_file "$tmp_tgz")"; then
   exit 1
 fi
 

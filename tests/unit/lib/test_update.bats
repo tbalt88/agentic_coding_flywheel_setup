@@ -909,6 +909,21 @@ EOF
     assert_failure
 }
 
+@test "supabase release updater uses trusted curl and SHA helpers" {
+    local script=""
+
+    script="$(supabase_release_update_script)"
+
+    [[ "$script" == *"supabase_system_binary_path() {"* ]]
+    [[ "$script" == *'SUPABASE_CURL_BIN="$(supabase_system_binary_path curl 2>/dev/null || true)"'* ]]
+    [[ "$script" == *'supabase_curl -o "$tmp_tgz"'* ]]
+    [[ "$script" == *'supabase_curl -o "$tmp_checksums"'* ]]
+    [[ "$script" == *'actual_sha="$(supabase_sha256_file "$tmp_tgz")"'* ]]
+    [[ "$script" != *'command -v curl'* ]]
+    [[ "$script" != *'sha256sum "$tmp_tgz"'* ]]
+    [[ "$script" != *'shasum -a 256 "$tmp_tgz"'* ]]
+}
+
 @test "update_stack continues after Meta Skill retry exhaustion" {
     QUIET=true
     VERBOSE=false
