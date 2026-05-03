@@ -70,6 +70,7 @@ setup_test_env() {
     unset -f id 2>/dev/null || true
     unset -f whoami 2>/dev/null || true
     unset -f doctor_fix_run_verified_installer 2>/dev/null || true
+    unset -f doctor_fix_system_curl 2>/dev/null || true
     unset _ACFS_AUTOFIX_SOURCED
     unset _ACFS_DOCTOR_FIX_LOADED
     # shellcheck source=../../scripts/lib/autofix.sh
@@ -150,6 +151,7 @@ cleanup_test_env() {
     unset -f id 2>/dev/null || true
     unset -f whoami 2>/dev/null || true
     unset -f doctor_fix_run_verified_installer 2>/dev/null || true
+    unset -f doctor_fix_system_curl 2>/dev/null || true
 
     # Restore HOME
     if [[ -n "${ORIGINAL_HOME:-}" ]]; then
@@ -164,6 +166,22 @@ cleanup_test_env() {
     unset ACFS_BIN_DIR
     unset DOCTOR_FIX_SSHD_CONFIG
     rm -rf "/tmp/test_doctor_fix_"* 2>/dev/null || true
+}
+
+stub_doctor_fix_agent_mail_health_ready() {
+    doctor_fix_system_curl() {
+        case "$*" in
+            *"/health/liveness"*)
+                return 0
+                ;;
+            *"/health"*)
+                printf '%s\n' '{"status":"ready"}'
+                ;;
+            *)
+                return 1
+                ;;
+        esac
+    }
 }
 
 test_doctor_fix_prefers_target_home_for_autofix_state() {
@@ -3027,6 +3045,8 @@ esac
 EOF
     chmod +x "$TARGET_HOME/.local/bin/curl"
 
+    stub_doctor_fix_agent_mail_health_ready
+
     if ! fix_mcp_agent_mail "fix.stack.mcp_agent_mail" >/dev/null 2>&1; then
         echo "  fix_mcp_agent_mail should succeed when only the direct install exists"
         cleanup_test_env
@@ -3135,6 +3155,8 @@ case "$*" in
 esac
 EOF
     chmod +x "$TARGET_HOME/.local/bin/curl"
+
+    stub_doctor_fix_agent_mail_health_ready
 
     if ! fix_mcp_agent_mail "fix.stack.mcp_agent_mail" >/dev/null 2>&1; then
         echo "  fix_mcp_agent_mail should succeed"
