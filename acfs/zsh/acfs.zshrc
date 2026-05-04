@@ -525,7 +525,7 @@ fi
 # MCP Agent Mail helper (leave the real `am` CLI available for service/macros)
 amserve() {
   if ! command -v am &>/dev/null; then
-    echo "am CLI not found — install with: curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/main/install.sh | bash"
+    echo "am CLI not found — install with: curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/refs/heads/main/install.sh | bash"
     return 1
   fi
 

@@ -1522,7 +1522,7 @@ EOF
     local python_url
     local expected_sha
     runtime_home="$(create_temp_dir)"
-    rust_url="https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/main/install.sh"
+    rust_url="https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/refs/heads/main/install.sh"
     python_url="https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail/main/install.sh"
     expected_sha="2222222222222222222222222222222222222222222222222222222222222222"
 
@@ -1600,7 +1600,7 @@ EOF
     cat > "$checksums_file" <<'EOF'
 installers:
   mcp_agent_mail:
-    url: "https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/main/install.sh"
+    url: "https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/refs/heads/main/install.sh"
     sha256: "2222222222222222222222222222222222222222222222222222222222222222"
 EOF
 
@@ -1617,7 +1617,7 @@ EOF
 @test "install.sh verifier refetches installer when fresh checksums change URL" {
     local installer="$PROJECT_ROOT/install.sh"
     local old_url="https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail/main/install.sh"
-    local fresh_url="https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/main/install.sh"
+    local fresh_url="https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/refs/heads/main/install.sh"
     local old_content='old python installer'
     local rust_installer_body='new rust installer'
     local stale_sha="1111111111111111111111111111111111111111111111111111111111111111"
