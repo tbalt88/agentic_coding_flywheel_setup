@@ -1744,6 +1744,37 @@ EOF
     assert_output --partial "declare -a"
 }
 
+@test "update_sync_known_installer_urls_from_checksums: accepts quoted and unquoted urls" {
+    local checksums_file
+    checksums_file="$HOME/checksums.yaml"
+
+    cat > "$checksums_file" <<'EOF'
+installers:
+  double_quoted:
+    url: "https://example.com/double.sh"
+    sha256: "2222222222222222222222222222222222222222222222222222222222222222"
+  single_quoted:
+    url: 'https://example.com/single.sh'
+    sha256: "3333333333333333333333333333333333333333333333333333333333333333"
+  unquoted:
+    url: https://example.com/unquoted.sh
+    sha256: "4444444444444444444444444444444444444444444444444444444444444444"
+EOF
+
+    declare -gA KNOWN_INSTALLERS=(
+        [double_quoted]="https://example.invalid/old-double.sh"
+        [single_quoted]="https://example.invalid/old-single.sh"
+        [unquoted]="https://example.invalid/old-unquoted.sh"
+    )
+
+    update_sync_known_installer_urls_from_checksums "$checksums_file"
+    assert_equal "$?" "0"
+
+    assert_equal "${KNOWN_INSTALLERS[double_quoted]}" "https://example.com/double.sh"
+    assert_equal "${KNOWN_INSTALLERS[single_quoted]}" "https://example.com/single.sh"
+    assert_equal "${KNOWN_INSTALLERS[unquoted]}" "https://example.com/unquoted.sh"
+}
+
 @test "install.sh verifier refetches installer when fresh checksums change URL" {
     local installer="$PROJECT_ROOT/install.sh"
     local old_url="https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail/main/install.sh"

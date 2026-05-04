@@ -270,6 +270,7 @@ stub_acfs_curl_response() {
     # Need full 64-char sha256 for regex
     local sha1="1111111111111111111111111111111111111111111111111111111111111111"
     local sha2="2222222222222222222222222222222222222222222222222222222222222222"
+    local sha3="3333333333333333333333333333333333333333333333333333333333333333"
 
     cat > "$CHECKSUMS_FILE" <<EOF
 installers:
@@ -277,8 +278,11 @@ installers:
     url: "https://example.com/1"
     sha256: "$sha1"
   tool2:
-    url: "https://example.com/2"
+    url: 'https://example.com/2'
     sha256: "$sha2"
+  tool3:
+    url: https://example.com/3
+    sha256: "$sha3"
 EOF
 
     echo "DEBUG: CHECKSUMS_FILE=$CHECKSUMS_FILE" >&2
@@ -300,4 +304,12 @@ EOF
     local val2
     val2=$(get_checksum "tool2")
     assert_equal "$val2" "$sha2"
+
+    local val3
+    val3=$(get_checksum "tool3")
+    assert_equal "$val3" "$sha3"
+
+    assert_equal "${KNOWN_INSTALLERS[tool1]}" "https://example.com/1"
+    assert_equal "${KNOWN_INSTALLERS[tool2]}" "https://example.com/2"
+    assert_equal "${KNOWN_INSTALLERS[tool3]}" "https://example.com/3"
 }

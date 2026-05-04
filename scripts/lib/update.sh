@@ -2858,8 +2858,17 @@ update_sync_known_installer_urls_from_checksums() {
             fi
         fi
 
-        if [[ -n "$current_tool" ]] && [[ "$line" =~ url:[[:space:]]*\"(https://[^\"]+)\" ]]; then
+        if [[ -n "$current_tool" ]] && [[ "$line" =~ ^[[:space:]]*url:[[:space:]]*(.*)$ ]]; then
             local refreshed_url="${BASH_REMATCH[1]}"
+            refreshed_url="${refreshed_url%%#*}"
+            refreshed_url="${refreshed_url%"${refreshed_url##*[![:space:]]}"}"
+            refreshed_url="${refreshed_url#"${refreshed_url%%[![:space:]]*}"}"
+            refreshed_url="${refreshed_url%\"}"
+            refreshed_url="${refreshed_url#\"}"
+            refreshed_url="${refreshed_url%\'}"
+            refreshed_url="${refreshed_url#\'}"
+            [[ "$refreshed_url" =~ ^https://[^[:space:]]+$ ]] || continue
+
             local previous_url="${KNOWN_INSTALLERS[$current_tool]:-}"
             if [[ "$previous_url" != "$refreshed_url" ]]; then
                 KNOWN_INSTALLERS["$current_tool"]="$refreshed_url"
