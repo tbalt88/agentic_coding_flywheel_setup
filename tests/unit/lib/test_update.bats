@@ -619,7 +619,7 @@ EOF
 @test "refresh_checksums: uses trusted update_curl helper" {
     local update="$PROJECT_ROOT/scripts/lib/update.sh"
 
-    run grep -F 'if update_curl \' "$update"
+    run grep -F "if update_curl \\" "$update"
     assert_success
 
     run grep -F 'elif update_curl --connect-timeout 5 --max-time 30 -o "$tmp_checksums" "$raw_url" 2>/dev/null; then' "$update"
@@ -1773,6 +1773,28 @@ EOF
     assert_equal "${KNOWN_INSTALLERS[double_quoted]}" "https://example.com/double.sh"
     assert_equal "${KNOWN_INSTALLERS[single_quoted]}" "https://example.com/single.sh"
     assert_equal "${KNOWN_INSTALLERS[unquoted]}" "https://example.com/unquoted.sh"
+}
+
+@test "install.sh checksum parser normalizes uppercase sha256 values" {
+    local installer="$PROJECT_ROOT/install.sh"
+    local upper_sha="ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD"
+    local lower_sha="abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+
+    eval "$(sed -n '/^acfs_parse_checksums_content()/,/^}$/p' "$installer")"
+
+    declare -gA ACFS_UPSTREAM_URLS=()
+    declare -gA ACFS_UPSTREAM_SHA256=()
+
+    acfs_parse_checksums_content "$(cat <<EOF
+installers:
+  example:
+    url: https://example.com/install.sh
+    sha256: '$upper_sha'
+EOF
+)"
+
+    assert_equal "${ACFS_UPSTREAM_URLS[example]}" "https://example.com/install.sh"
+    assert_equal "${ACFS_UPSTREAM_SHA256[example]}" "$lower_sha"
 }
 
 @test "install.sh verifier refetches installer when fresh checksums change URL" {

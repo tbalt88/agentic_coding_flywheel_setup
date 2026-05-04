@@ -3172,8 +3172,8 @@ acfs_parse_checksums_content() {
             val="${val%\"}" val="${val#\"}"
             val="${val%\'}" val="${val#\'}"
 
-            if [[ -n "$val" ]]; then
-                ACFS_UPSTREAM_SHA256["$current_tool"]="$val"
+            if [[ "$val" =~ ^[0-9A-Fa-f]{64}$ ]]; then
+                ACFS_UPSTREAM_SHA256["$current_tool"]="${val,,}"
             fi
             continue
         fi
