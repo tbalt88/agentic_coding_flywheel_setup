@@ -71,6 +71,14 @@ _status_system_binary_path() {
     local candidate=""
 
     [[ -n "$name" ]] || return 1
+    case "$name" in
+        .|..)
+            return 1
+            ;;
+        *[!A-Za-z0-9._+-]*)
+            return 1
+            ;;
+    esac
 
     for candidate in \
         "/usr/bin/$name" \
@@ -489,13 +497,20 @@ _status_read_state_string() {
     local state_file="$1"
     local key="$2"
     local value=""
+    local jq_bin=""
+    local sed_bin=""
+    local head_bin=""
 
     [[ -f "$state_file" ]] || return 1
 
-    if command -v jq &>/dev/null; then
-        value=$(jq -r --arg key "$key" '.[$key] // empty' "$state_file" 2>/dev/null || true)
+    jq_bin="$(_status_system_binary_path jq 2>/dev/null || true)"
+    if [[ -n "$jq_bin" ]]; then
+        value=$("$jq_bin" -r --arg key "$key" '.[$key] // empty' "$state_file" 2>/dev/null || true)
     else
-        value=$(sed -n "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" "$state_file" 2>/dev/null | head -n 1)
+        sed_bin="$(_status_system_binary_path sed 2>/dev/null || true)"
+        head_bin="$(_status_system_binary_path head 2>/dev/null || true)"
+        [[ -n "$sed_bin" && -n "$head_bin" ]] || return 1
+        value=$("$sed_bin" -n "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" "$state_file" 2>/dev/null | "$head_bin" -n 1)
     fi
 
     [[ -n "$value" ]] && [[ "$value" != "null" ]] || return 1
@@ -1070,11 +1085,15 @@ _status_read_last_update_ts() {
     local state_file="$1"
     local ts=""
     local key=""
+    local jq_bin=""
+    local sed_bin=""
+    local head_bin=""
 
     [[ -f "$state_file" ]] || return 1
 
-    if command -v jq &>/dev/null; then
-        ts=$(jq -r '
+    jq_bin="$(_status_system_binary_path jq 2>/dev/null || true)"
+    if [[ -n "$jq_bin" ]]; then
+        ts=$("$jq_bin" -r '
             .last_updated //
             .last_completed_phase_ts //
             .updated_at //
@@ -1086,9 +1105,12 @@ _status_read_last_update_ts() {
     fi
 
     if [[ -z "$ts" || "$ts" == "null" ]]; then
+        sed_bin="$(_status_system_binary_path sed 2>/dev/null || true)"
+        head_bin="$(_status_system_binary_path head 2>/dev/null || true)"
+        [[ -n "$sed_bin" && -n "$head_bin" ]] || return 1
         for key in last_updated last_completed_phase_ts updated_at last_update started_at install_date; do
-            ts=$(sed -n "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" \
-                "$state_file" 2>/dev/null | head -n1)
+            ts=$("$sed_bin" -n "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" \
+                "$state_file" 2>/dev/null | "$head_bin" -n1)
             if [[ -n "$ts" ]]; then
                 break
             fi
@@ -1146,6 +1168,8 @@ status_main() {
     local _update_json=""
     local _msg=""
     local _missing_count=0
+    local _jq_bin=""
+    local _date_bin=""
     local w=""
     local e=""
     local cmd=""
@@ -1160,6 +1184,8 @@ status_main() {
 
     _status_prepare_context
     _state_file="$(_status_resolve_state_file)"
+    _jq_bin="$(_status_system_binary_path jq 2>/dev/null || true)"
+    _date_bin="$(_status_system_binary_path date 2>/dev/null || true)"
 
     if [[ ! -d "$_ACFS_HOME" ]]; then
         _errors+=("ACFS_HOME missing")
@@ -1169,7 +1195,7 @@ status_main() {
         _errors+=("state file missing")
     elif [[ ! -s "$_state_file" ]]; then
         _errors+=("state file empty")
-    elif command -v jq &>/dev/null && ! jq -e . "$_state_file" >/dev/null 2>&1; then
+    elif [[ -n "$_jq_bin" ]] && ! "$_jq_bin" -e . "$_state_file" >/dev/null 2>&1; then
         _errors+=("state file invalid JSON")
     fi
 
@@ -1191,9 +1217,9 @@ status_main() {
         _last_update_ts="$(_status_read_last_update_ts "$_state_file" 2>/dev/null || true)"
     fi
 
-    if [[ -n "$_last_update_ts" ]]; then
-        _last_epoch=$(date -d "$_last_update_ts" +%s 2>/dev/null) || _last_epoch=0
-        _now_epoch=$(date +%s)
+    if [[ -n "$_last_update_ts" && -n "$_date_bin" ]]; then
+        _last_epoch=$("$_date_bin" -d "$_last_update_ts" +%s 2>/dev/null) || _last_epoch=0
+        _now_epoch=$("$_date_bin" +%s 2>/dev/null) || _now_epoch=0
         if [[ "$_last_epoch" -gt 0 ]]; then
             _age_secs=$((_now_epoch - _last_epoch))
             if [[ $_age_secs -lt 3600 ]]; then

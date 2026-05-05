@@ -1395,7 +1395,7 @@ info_get_onboard_completed_csv() {
     compact="$(info_get_onboard_progress_compact || true)"
     sed_bin="$(info_system_binary_path sed 2>/dev/null || true)"
     head_bin="$(info_system_binary_path head 2>/dev/null || true)"
-    [[ -n "$sed_bin" && -n "$head_bin" ]] || return 1
+    [[ -n "$sed_bin" && -n "$head_bin" ]] || { echo ""; return 0; }
     printf '%s\n' "$compact" | "$sed_bin" -n 's/.*"completed":\[\([^]]*\)\].*/\1/p' | "$head_bin" -n 1
 }
 
@@ -1412,7 +1412,7 @@ info_get_lessons_completed() {
         local -a completed_items=()
         local completed_item=""
         local completed_count=0
-        completed_raw="$(info_get_onboard_completed_csv)"
+        completed_raw="$(info_get_onboard_completed_csv || true)"
         if [[ -z "$completed_raw" ]]; then
             echo "0"
         else
@@ -1522,7 +1522,7 @@ info_get_next_lesson() {
         fi
 
         local completed_csv
-        completed_csv="$(info_get_onboard_completed_csv)"
+        completed_csv="$(info_get_onboard_completed_csv || true)"
         completed_csv="${completed_csv//[[:space:]]/}"
 
         local next_idx=0

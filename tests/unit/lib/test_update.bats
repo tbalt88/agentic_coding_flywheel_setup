@@ -5228,6 +5228,71 @@ EOF
     assert_success
 }
 
+@test "info and status system binary resolvers reject pathlike names" {
+    local info="$PROJECT_ROOT/scripts/lib/info.sh"
+    local status="$PROJECT_ROOT/scripts/lib/status.sh"
+
+    run bash -c '
+        source "$1"
+        source "$2"
+        set -euo pipefail
+        ! info_system_binary_path "."
+        ! info_system_binary_path ".."
+        ! info_system_binary_path "../bin/sh"
+        ! info_system_binary_path "/bin/sh"
+        ! info_system_binary_path "sh name"
+        ! _status_system_binary_path "."
+        ! _status_system_binary_path ".."
+        ! _status_system_binary_path "../bin/sh"
+        ! _status_system_binary_path "/bin/sh"
+        ! _status_system_binary_path "sh name"
+    ' _ "$info" "$status"
+
+    assert_success
+}
+
+@test "info and status state parsers ignore PATH-poisoned jq" {
+    local info="$PROJECT_ROOT/scripts/lib/info.sh"
+    local status="$PROJECT_ROOT/scripts/lib/status.sh"
+    local fake_bin
+    local marker
+    local state_file
+
+    fake_bin="$BATS_TEST_TMPDIR/info-status-fake-jq-bin"
+    marker="$BATS_TEST_TMPDIR/info-status-fake-jq-used"
+    state_file="$BATS_TEST_TMPDIR/info-status-state.json"
+    mkdir -p "$fake_bin"
+    cat > "$fake_bin/jq" <<EOF
+#!/usr/bin/env bash
+printf '/tmp/poisoned-home\n'
+: > "$marker"
+EOF
+    chmod +x "$fake_bin/jq"
+    cat > "$state_file" <<'EOF'
+{"target_home":"/tmp/real-home","target_user":"realuser","bin_dir":"/tmp/real-home/.local/bin","last_updated":"2026-05-05T00:00:00Z"}
+EOF
+
+    run env -i PATH="$fake_bin:/usr/bin:/bin" HOME="$HOME" bash -c '
+        source "$1"
+        source "$2"
+        set -euo pipefail
+        [[ "$(info_read_state_string "$3" target_home)" == "/tmp/real-home" ]]
+        [[ "$(_status_read_state_string "$3" target_home)" == "/tmp/real-home" ]]
+        [[ "$(_status_read_last_update_ts "$3")" == "2026-05-05T00:00:00Z" ]]
+        [[ ! -e "$4" ]]
+    ' _ "$info" "$status" "$state_file" "$marker"
+
+    assert_success
+}
+
+@test "info and status JSON helpers use trusted jq resolver" {
+    local info="$PROJECT_ROOT/scripts/lib/info.sh"
+    local status="$PROJECT_ROOT/scripts/lib/status.sh"
+
+    run grep -F 'command -v jq' "$info" "$status"
+    assert_failure
+}
+
 @test "dashboard generate failure clears cleanup RETURN trap under set -u" {
     local acfs_home
     local fake_info
