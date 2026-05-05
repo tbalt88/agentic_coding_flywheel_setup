@@ -5210,6 +5210,43 @@ install-workflow|$PROJECT_ROOT/scripts/install-acfs-workflow.sh|workflow_system_
 EOF
 }
 
+@test "remaining direct system binary resolvers reject pathlike names" {
+    local label
+    local script
+    local func
+
+    while IFS='|' read -r label script func; do
+        run bash -s -- "$script" "$func" <<'EOF_DIRECT_RESOLVERS_REJECT_PATHS'
+script="$1"
+func="$2"
+eval "$(sed -n "/^${func}()/,/^}$/p" "$script")"
+set -euo pipefail
+! "$func" "."
+! "$func" ".."
+! "$func" "../bin/sh"
+! "$func" "/bin/sh"
+! "$func" "sh name"
+EOF_DIRECT_RESOLVERS_REJECT_PATHS
+        assert_success "$label resolver accepted a pathlike name"
+    done <<EOF
+install-early|$PROJECT_ROOT/install.sh|acfs_early_system_binary_path
+onboard|$PROJECT_ROOT/packages/onboard/onboard.sh|onboard_system_binary_path
+autofix|$PROJECT_ROOT/scripts/lib/autofix.sh|autofix_system_binary_path
+changelog|$PROJECT_ROOT/scripts/lib/changelog.sh|changelog_system_binary_path
+cli-tools|$PROJECT_ROOT/scripts/lib/cli_tools.sh|_cli_system_binary_path
+context|$PROJECT_ROOT/scripts/lib/context.sh|context_system_binary_path
+error-tracking|$PROJECT_ROOT/scripts/lib/error_tracking.sh|error_tracking_system_binary_path
+github-api|$PROJECT_ROOT/scripts/lib/github_api.sh|_github_api_system_binary_path
+languages|$PROJECT_ROOT/scripts/lib/languages.sh|_lang_system_binary_path
+nightly-update|$PROJECT_ROOT/scripts/lib/nightly_update.sh|system_binary_path
+os-detect|$PROJECT_ROOT/scripts/lib/os_detect.sh|os_detect_system_binary_path
+security|$PROJECT_ROOT/scripts/lib/security.sh|acfs_security_system_binary_path
+supabase-update|$PROJECT_ROOT/scripts/lib/update.sh|supabase_system_binary_path
+user|$PROJECT_ROOT/scripts/lib/user.sh|user_system_binary_path
+zsh|$PROJECT_ROOT/scripts/lib/zsh.sh|zsh_system_binary_path
+EOF
+}
+
 @test "dashboard serve uses trusted resolver for subprocesses" {
     local dashboard="$PROJECT_ROOT/scripts/lib/dashboard.sh"
 

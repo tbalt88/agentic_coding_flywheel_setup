@@ -113,6 +113,9 @@ acfs_early_system_binary_path() {
 
     [[ -n "$name" ]] || return 1
     case "$name" in
+        .|..)
+            return 1
+            ;;
         *[!A-Za-z0-9._+-]*)
             return 1
             ;;
