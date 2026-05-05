@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-05-04T16:35:10-04:00
+# checksums.yaml - Auto-generated 2026-05-05T11:11:19+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -156,7 +156,7 @@ installers:
 
   uv:
     url: "https://astral.sh/uv/install.sh"
-    sha256: "facbed3a7e2750df3aef698537c6d50869b025a58bdd13154cfdcc2f30354ca2"
+    sha256: "587b789920099623966262432910018f9072f9c5150d552cff4063d2422d2fb4"
 
   xf:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/xf/main/install.sh"
@@ -165,3 +165,4 @@ installers:
   zoxide:
     url: "https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh"
     sha256: "0c25aed6cce9d56ee0596c9a5df8cbe99ffd0f7a7054de0262234dd268b61404"
+
