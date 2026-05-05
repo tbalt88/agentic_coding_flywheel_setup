@@ -82,6 +82,14 @@ info_system_binary_path() {
     local candidate=""
 
     [[ -n "$name" ]] || return 1
+    case "$name" in
+        .|..)
+            return 1
+            ;;
+        *[!A-Za-z0-9._+-]*)
+            return 1
+            ;;
+    esac
 
     for candidate in \
         "/usr/bin/$name" \
@@ -428,13 +436,20 @@ info_read_state_string() {
     local state_file="$1"
     local key="$2"
     local value=""
+    local jq_bin=""
+    local sed_bin=""
+    local head_bin=""
 
     [[ -f "$state_file" ]] || return 1
 
-    if command -v jq &>/dev/null; then
-        value=$(jq -r --arg key "$key" '.[$key] // empty' "$state_file" 2>/dev/null || true)
+    jq_bin="$(info_system_binary_path jq 2>/dev/null || true)"
+    if [[ -n "$jq_bin" ]]; then
+        value=$("$jq_bin" -r --arg key "$key" '.[$key] // empty' "$state_file" 2>/dev/null || true)
     else
-        value=$(sed -n "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" "$state_file" 2>/dev/null | head -n 1)
+        sed_bin="$(info_system_binary_path sed 2>/dev/null || true)"
+        head_bin="$(info_system_binary_path head 2>/dev/null || true)"
+        [[ -n "$sed_bin" && -n "$head_bin" ]] || return 1
+        value=$("$sed_bin" -n "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" "$state_file" 2>/dev/null | "$head_bin" -n 1)
     fi
 
     [[ -n "$value" ]] && [[ "$value" != "null" ]] || return 1
@@ -1008,7 +1023,27 @@ info_prepare_context() {
 
 # Get system hostname
 info_get_hostname() {
-    cat /etc/hostname 2>/dev/null || hostname 2>/dev/null || echo "unknown"
+    local hostname_value=""
+    local hostname_bin=""
+
+    if [[ -r /etc/hostname ]]; then
+        IFS= read -r hostname_value < /etc/hostname || true
+        if [[ -n "$hostname_value" ]]; then
+            printf '%s\n' "$hostname_value"
+            return 0
+        fi
+    fi
+
+    hostname_bin="$(info_system_binary_path hostname 2>/dev/null || true)"
+    if [[ -n "$hostname_bin" ]]; then
+        hostname_value="$("$hostname_bin" 2>/dev/null || true)"
+    fi
+
+    if [[ -n "$hostname_value" ]]; then
+        printf '%s\n' "$hostname_value"
+    else
+        echo "unknown"
+    fi
 }
 
 # Get primary IP address (cached or live)
@@ -1018,14 +1053,23 @@ info_get_ip() {
     local cache_file=""
     data_home=$(info_get_data_home)
     [[ -n "$data_home" ]] && cache_file="${data_home}/cache/ip_address"
-    local now
-    now="$(date +%s 2>/dev/null || echo "")"
+    local now=""
+    local date_bin=""
+    local hostname_bin=""
+    local ip_bin=""
+    local mkdir_bin=""
+
+    date_bin="$(info_system_binary_path date 2>/dev/null || true)"
+    if [[ -n "$date_bin" ]]; then
+        now="$("$date_bin" +%s 2>/dev/null || echo "")"
+    fi
 
     if [[ -n "$cache_file" ]] && [[ -f "$cache_file" ]] && [[ "$now" =~ ^[0-9]+$ ]]; then
         local cache_mtime
         if cache_mtime="$(info_get_file_mtime "$cache_file")" && [[ $cache_mtime -gt $((now - 3600)) ]]; then
             local cached_ip=""
-            cached_ip="$(head -1 "$cache_file" 2>/dev/null | tr -d '[:space:]')"
+            IFS= read -r cached_ip < "$cache_file" || true
+            cached_ip="${cached_ip//[[:space:]]/}"
             if [[ -n "$cached_ip" ]] && [[ "$cached_ip" != "unknown" ]]; then
                 echo "$cached_ip"
                 return 0
@@ -1034,19 +1078,42 @@ info_get_ip() {
     fi
 
     # Get live value
-    local ip
-    ip=$(hostname -I 2>/dev/null | awk '{print $1}')
-    if [[ -z "$ip" ]]; then
-        ip=$(ip route get 1 2>/dev/null | awk '{print $(NF-2);exit}')
+    local ip=""
+    local ip_line=""
+    local route_word=""
+    local expect_src=false
+
+    hostname_bin="$(info_system_binary_path hostname 2>/dev/null || true)"
+    if [[ -n "$hostname_bin" ]]; then
+        ip_line="$("$hostname_bin" -I 2>/dev/null || true)"
+        read -r ip _ <<< "$ip_line"
     fi
+
+    if [[ -z "$ip" ]]; then
+        ip_bin="$(info_system_binary_path ip 2>/dev/null || true)"
+        if [[ -n "$ip_bin" ]]; then
+            ip_line="$("$ip_bin" route get 1 2>/dev/null || true)"
+            for route_word in $ip_line; do
+                if [[ "$expect_src" == true ]]; then
+                    ip="$route_word"
+                    break
+                fi
+                [[ "$route_word" == "src" ]] && expect_src=true
+            done
+        fi
+    fi
+
     if [[ -z "$ip" ]]; then
         ip="unknown"
     fi
 
     # Cache successful lookups, but do not pin transient failures for an hour.
     if [[ "$ip" != "unknown" ]] && [[ -n "$cache_file" ]]; then
-        mkdir -p "${data_home}/cache" 2>/dev/null
-        echo "$ip" > "$cache_file" 2>/dev/null
+        mkdir_bin="$(info_system_binary_path mkdir 2>/dev/null || true)"
+        if [[ -n "$mkdir_bin" ]]; then
+            "$mkdir_bin" -p "${data_home}/cache" 2>/dev/null
+            echo "$ip" > "$cache_file" 2>/dev/null
+        fi
     fi
 
     echo "$ip"
@@ -1054,7 +1121,20 @@ info_get_ip() {
 
 # Get human-readable uptime
 info_get_uptime() {
-    uptime -p 2>/dev/null | sed 's/^up //' || echo "unknown"
+    local uptime_bin=""
+    local uptime_value=""
+
+    uptime_bin="$(info_system_binary_path uptime 2>/dev/null || true)"
+    if [[ -n "$uptime_bin" ]]; then
+        uptime_value="$("$uptime_bin" -p 2>/dev/null || true)"
+        uptime_value="${uptime_value#up }"
+    fi
+
+    if [[ -n "$uptime_value" ]]; then
+        printf '%s\n' "$uptime_value"
+    else
+        echo "unknown"
+    fi
 }
 
 # Get OS version info
@@ -1073,23 +1153,39 @@ info_get_os_codename() {
 # Get installation state from state.json
 info_get_install_state() {
     local state_file
+    local jq_bin=""
+    local cat_bin=""
     state_file="$(info_get_install_state_file)"
     [[ -f "$state_file" ]] || { echo '{}'; return 0; }
 
-    if command -v jq &>/dev/null; then
-        jq -c '.' "$state_file" 2>/dev/null || cat "$state_file" 2>/dev/null || echo '{}'
+    jq_bin="$(info_system_binary_path jq 2>/dev/null || true)"
+    cat_bin="$(info_system_binary_path cat 2>/dev/null || true)"
+    if [[ -n "$jq_bin" ]]; then
+        "$jq_bin" -c '.' "$state_file" 2>/dev/null || {
+            if [[ -n "$cat_bin" ]]; then
+                "$cat_bin" "$state_file" 2>/dev/null || echo '{}'
+            else
+                echo '{}'
+            fi
+        }
         return 0
     fi
 
-    cat "$state_file" 2>/dev/null || echo '{}'
+    if [[ -n "$cat_bin" ]]; then
+        "$cat_bin" "$state_file" 2>/dev/null || echo '{}'
+    else
+        echo '{}'
+    fi
 }
 
 # Get completed phases count
 info_get_completed_phases() {
     local state
+    local jq_bin=""
     state=$(info_get_install_state)
-    if command -v jq &>/dev/null; then
-        echo "$state" | jq -r '.completed_phases | length // 0'
+    jq_bin="$(info_system_binary_path jq 2>/dev/null || true)"
+    if [[ -n "$jq_bin" ]]; then
+        "$jq_bin" -r '.completed_phases | length // 0' <<< "$state"
     else
         echo "0"
     fi
@@ -1103,16 +1199,22 @@ info_get_total_phases() {
 # Get skipped tools
 info_get_skipped_tools_json() {
     local state_file
+    local jq_bin=""
+    local python_bin=""
+    local sed_bin=""
+    local head_bin=""
     state_file="$(info_get_install_state_file)"
     [[ -f "$state_file" ]] || { echo '[]'; return 0; }
 
-    if command -v jq &>/dev/null; then
-        jq -c '.skipped_tools // []' "$state_file" 2>/dev/null || echo '[]'
+    jq_bin="$(info_system_binary_path jq 2>/dev/null || true)"
+    if [[ -n "$jq_bin" ]]; then
+        "$jq_bin" -c '.skipped_tools // []' "$state_file" 2>/dev/null || echo '[]'
         return 0
     fi
 
-    if command -v python3 &>/dev/null; then
-        python3 - "$state_file" <<'PY'
+    python_bin="$(info_system_binary_path python3 2>/dev/null || true)"
+    if [[ -n "$python_bin" ]]; then
+        "$python_bin" - "$state_file" <<'PY'
 import json
 import sys
 
@@ -1132,7 +1234,11 @@ PY
     fi
 
     local raw
-    raw=$(sed -n 's/.*"skipped_tools"[[:space:]]*:[[:space:]]*\[\([^]]*\)\].*/\1/p' "$state_file" 2>/dev/null | head -n1)
+    sed_bin="$(info_system_binary_path sed 2>/dev/null || true)"
+    head_bin="$(info_system_binary_path head 2>/dev/null || true)"
+    if [[ -n "$sed_bin" && -n "$head_bin" ]]; then
+        raw=$("$sed_bin" -n 's/.*"skipped_tools"[[:space:]]*:[[:space:]]*\[\([^]]*\)\].*/\1/p' "$state_file" 2>/dev/null | "$head_bin" -n1)
+    fi
     if [[ -z "$raw" ]]; then
         echo '[]'
     else
@@ -1142,15 +1248,20 @@ PY
 
 info_get_skipped_tools() {
     local skipped_tools_json
+    local jq_bin=""
+    local python_bin=""
+    local sed_bin=""
     skipped_tools_json="$(info_get_skipped_tools_json)"
 
-    if command -v jq &>/dev/null; then
-        echo "$skipped_tools_json" | jq -r 'join(", ")'
+    jq_bin="$(info_system_binary_path jq 2>/dev/null || true)"
+    if [[ -n "$jq_bin" ]]; then
+        "$jq_bin" -r 'join(", ")' <<< "$skipped_tools_json"
         return 0
     fi
 
-    if command -v python3 &>/dev/null; then
-        python3 - "$skipped_tools_json" <<'PY'
+    python_bin="$(info_system_binary_path python3 2>/dev/null || true)"
+    if [[ -n "$python_bin" ]]; then
+        "$python_bin" - "$skipped_tools_json" <<'PY'
 import json
 import sys
 
@@ -1167,19 +1278,32 @@ PY
         return 0
     fi
 
-    printf '%s\n' "$skipped_tools_json" | sed -e 's/^\[//' -e 's/\]$//' -e 's/"//g' -e 's/, */, /g'
+    sed_bin="$(info_system_binary_path sed 2>/dev/null || true)"
+    if [[ -n "$sed_bin" ]]; then
+        printf '%s\n' "$skipped_tools_json" | "$sed_bin" -e 's/^\[//' -e 's/\]$//' -e 's/"//g' -e 's/, */, /g'
+    else
+        printf '%s\n' "$skipped_tools_json"
+    fi
 }
 
 # Get installation date
 info_get_install_date() {
     local state
+    local jq_bin=""
+    local date_bin=""
     state=$(info_get_install_state)
-    if command -v jq &>/dev/null; then
+    jq_bin="$(info_system_binary_path jq 2>/dev/null || true)"
+    if [[ -n "$jq_bin" ]]; then
         local date_str
-        date_str=$(echo "$state" | jq -r '.started_at // empty')
+        date_str=$("$jq_bin" -r '.started_at // empty' <<< "$state")
         if [[ -n "$date_str" ]]; then
             # Try to format nicely, fall back to raw
-            date -d "$date_str" "+%Y-%m-%d" 2>/dev/null || echo "${date_str%%T*}"
+            date_bin="$(info_system_binary_path date 2>/dev/null || true)"
+            if [[ -n "$date_bin" ]]; then
+                "$date_bin" -d "$date_str" "+%Y-%m-%d" 2>/dev/null || echo "${date_str%%T*}"
+            else
+                echo "${date_str%%T*}"
+            fi
         else
             echo "unknown"
         fi
@@ -1216,15 +1340,23 @@ info_get_onboard_progress_file() {
 info_get_lesson_file_by_index() {
     local index="${1:-}"
     local lessons_dir
+    local find_bin=""
+    local sort_bin=""
+    local sed_bin=""
     lessons_dir=$(info_get_onboard_lessons_dir)
 
     if [[ ! "$index" =~ ^[0-9]+$ ]] || [[ ! -d "$lessons_dir" ]]; then
         return 1
     fi
 
-    find "$lessons_dir" -maxdepth 1 -type f -name '*.md' -print 2>/dev/null \
-        | LC_ALL=C sort \
-        | sed -n "$((index + 1))p"
+    find_bin="$(info_system_binary_path find 2>/dev/null || true)"
+    sort_bin="$(info_system_binary_path sort 2>/dev/null || true)"
+    sed_bin="$(info_system_binary_path sed 2>/dev/null || true)"
+    [[ -n "$find_bin" && -n "$sort_bin" && -n "$sed_bin" ]] || return 1
+
+    "$find_bin" "$lessons_dir" -maxdepth 1 -type f -name '*.md' -print 2>/dev/null \
+        | LC_ALL=C "$sort_bin" \
+        | "$sed_bin" -n "$((index + 1))p"
 }
 
 info_get_onboard_progress() {
@@ -1233,7 +1365,13 @@ info_get_onboard_progress() {
     local total
     total=$(info_get_lessons_total)
     if [[ -f "$progress_file" ]]; then
-        cat "$progress_file"
+        local cat_bin=""
+        cat_bin="$(info_system_binary_path cat 2>/dev/null || true)"
+        if [[ -n "$cat_bin" ]]; then
+            "$cat_bin" "$progress_file"
+        else
+            printf '{"completed": [], "total": %s}\n' "$total"
+        fi
     else
         printf '{"completed": [], "total": %s}\n' "$total"
     fi
@@ -1241,31 +1379,50 @@ info_get_onboard_progress() {
 
 info_get_onboard_progress_compact() {
     local progress_file
+    local tr_bin=""
     progress_file=$(info_get_onboard_progress_file)
 
     [[ -f "$progress_file" ]] || return 1
-    tr -d '[:space:]' < "$progress_file" 2>/dev/null
+    tr_bin="$(info_system_binary_path tr 2>/dev/null || true)"
+    [[ -n "$tr_bin" ]] || return 1
+    "$tr_bin" -d '[:space:]' < "$progress_file" 2>/dev/null
 }
 
 info_get_onboard_completed_csv() {
     local compact
+    local sed_bin=""
+    local head_bin=""
     compact="$(info_get_onboard_progress_compact || true)"
-    printf '%s\n' "$compact" | sed -n 's/.*"completed":\[\([^]]*\)\].*/\1/p' | head -1
+    sed_bin="$(info_system_binary_path sed 2>/dev/null || true)"
+    head_bin="$(info_system_binary_path head 2>/dev/null || true)"
+    [[ -n "$sed_bin" && -n "$head_bin" ]] || return 1
+    printf '%s\n' "$compact" | "$sed_bin" -n 's/.*"completed":\[\([^]]*\)\].*/\1/p' | "$head_bin" -n 1
 }
 
 # Get onboard lessons completed count
 info_get_lessons_completed() {
     local progress
+    local jq_bin=""
     progress=$(info_get_onboard_progress)
-    if command -v jq &>/dev/null; then
-        echo "$progress" | jq -r '(.completed // []) | length'
+    jq_bin="$(info_system_binary_path jq 2>/dev/null || true)"
+    if [[ -n "$jq_bin" ]]; then
+        "$jq_bin" -r '(.completed // []) | length' <<< "$progress"
     else
         local completed_raw
+        local -a completed_items=()
+        local completed_item=""
+        local completed_count=0
         completed_raw="$(info_get_onboard_completed_csv)"
         if [[ -z "$completed_raw" ]]; then
             echo "0"
         else
-            echo "$completed_raw" | tr ',' '\n' | sed '/^[[:space:]]*$/d' | wc -l | awk '{print $1}'
+            IFS=',' read -r -a completed_items <<< "$completed_raw"
+            for completed_item in "${completed_items[@]}"; do
+                completed_item="${completed_item//[[:space:]]/}"
+                [[ -n "$completed_item" ]] || continue
+                ((completed_count++)) || true
+            done
+            echo "$completed_count"
         fi
     fi
 }
@@ -1273,6 +1430,9 @@ info_get_lessons_completed() {
 # Get total lessons
 info_get_lessons_total() {
     local lessons_dir
+    local find_bin=""
+    local lesson_count=0
+    local lesson_path=""
     lessons_dir=$(info_get_onboard_lessons_dir)
 
     if [[ ! -d "$lessons_dir" ]]; then
@@ -1280,27 +1440,45 @@ info_get_lessons_total() {
         return 0
     fi
 
-    find "$lessons_dir" -maxdepth 1 -type f -name '*.md' -print 2>/dev/null \
-        | LC_ALL=C sort \
-        | wc -l \
-        | awk '{print $1}'
+    find_bin="$(info_system_binary_path find 2>/dev/null || true)"
+    if [[ -z "$find_bin" ]]; then
+        echo "0"
+        return 0
+    fi
+
+    while IFS= read -r lesson_path; do
+        [[ -n "$lesson_path" ]] || continue
+        ((lesson_count++)) || true
+    done < <("$find_bin" "$lessons_dir" -maxdepth 1 -type f -name '*.md' -print 2>/dev/null)
+
+    echo "$lesson_count"
 }
 
 # Map an onboard lesson index to its discovered title.
 info_get_lesson_title() {
     local lesson_path
     local title
+    local line=""
 
     lesson_path=$(info_get_lesson_file_by_index "${1:-}") || {
         echo "unknown"
         return 0
     }
 
-    title=$(grep -m1 '^# ' "$lesson_path" 2>/dev/null | sed 's/^# //')
+    while IFS= read -r line; do
+        case "$line" in
+            "# "*)
+                title="${line#"# "}"
+                break
+                ;;
+        esac
+    done < "$lesson_path"
+
     if [[ -n "$title" ]]; then
         echo "$title"
     else
-        basename "${lesson_path%.md}"
+        local filename="${lesson_path##*/}"
+        echo "${filename%.md}"
     fi
 }
 
@@ -1308,6 +1486,7 @@ info_get_lesson_title() {
 info_get_next_lesson() {
     local progress
     local total
+    local jq_bin=""
     progress=$(info_get_onboard_progress)
     total=$(info_get_lessons_total)
 
@@ -1316,9 +1495,10 @@ info_get_next_lesson() {
         return 0
     fi
 
-    if command -v jq &>/dev/null; then
+    jq_bin="$(info_system_binary_path jq 2>/dev/null || true)"
+    if [[ -n "$jq_bin" ]]; then
         local completed_count
-        completed_count=$(echo "$progress" | jq -r '(.completed // []) | length' 2>/dev/null || echo "0")
+        completed_count=$("$jq_bin" -r '(.completed // []) | length' <<< "$progress" 2>/dev/null || echo "0")
 
         if [[ "$completed_count" -ge "$total" ]]; then
             echo "All complete!"
@@ -1326,7 +1506,7 @@ info_get_next_lesson() {
         fi
 
         local next_idx
-        next_idx=$(echo "$progress" | jq -r --argjson total "$total" '(.completed // []) as $c | ([range(0;$total) as $i | select(($c | index($i)) == null) | $i] | first // 0)' 2>/dev/null || echo "0")
+        next_idx=$("$jq_bin" -r --argjson total "$total" '(.completed // []) as $c | ([range(0;$total) as $i | select(($c | index($i)) == null) | $i] | first // 0)' <<< "$progress" 2>/dev/null || echo "0")
         [[ "$next_idx" =~ ^[0-9]+$ ]] || next_idx=0
 
         local title
@@ -1342,7 +1522,8 @@ info_get_next_lesson() {
         fi
 
         local completed_csv
-        completed_csv="$(info_get_onboard_completed_csv | tr -d ' ')"
+        completed_csv="$(info_get_onboard_completed_csv)"
+        completed_csv="${completed_csv//[[:space:]]/}"
 
         local next_idx=0
         local idx
@@ -1662,11 +1843,17 @@ EOF
 
 info_render_html() {
     local hostname ip uptime os_version os_codename
+    local generated_at="unknown"
+    local date_bin=""
     hostname=$(info_get_hostname)
     ip=$(info_get_ip)
     uptime=$(info_get_uptime)
     os_version=$(info_get_os_version)
     os_codename=$(info_get_os_codename)
+    date_bin="$(info_system_binary_path date 2>/dev/null || true)"
+    if [[ -n "$date_bin" ]]; then
+        generated_at="$("$date_bin" -Iseconds 2>/dev/null || echo "unknown")"
+    fi
 
     # Escape values for safe HTML rendering (prevent broken markup if hostname/etc contain
     # special characters). This output may be served via `acfs dashboard serve`.
@@ -1806,7 +1993,7 @@ EOF
 $onboard_card
 
         <div class="footer">
-            Generated: $(date -Iseconds)<br>
+            Generated: $generated_at<br>
             Run <code>acfs doctor</code> for health verification
         </div>
     </div>
