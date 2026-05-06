@@ -66,6 +66,7 @@ temp/
 *.tmp
 *.temp
 /.keep
+/-w
 test_sed_flags.sh
 .tsconfig.next-*.json
 
@@ -175,6 +176,7 @@ a.out
 
 # bv (beads viewer) local config and caches
 .bv/
+.ntm/
 .vercel
 .env*.local
 tests/artifacts/
@@ -188,6 +190,7 @@ core
 perf.data
 perf.data.old
 *.bak
+*.backup
 clippy.txt
 clippy.json
 clippy_results.json
@@ -235,6 +238,7 @@ gemini.mcp.json
 
 # Ephemeral stderr capture files
 /err
+/@AGENTS.md
 .claude/settings.local.json
 
 # Beads backup snapshots (created by br doctor / concurrent agents)
