@@ -272,6 +272,8 @@ jobs:
             mode: vibe
           - ubuntu: '25.04'
             mode: vibe
+          - ubuntu: '25.10'
+            mode: vibe
           - ubuntu: '24.04'
             mode: safe
     container:

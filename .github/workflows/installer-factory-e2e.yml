@@ -1,0 +1,175 @@
+name: Factory Installer E2E (Real Host)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "ACFS ref to install"
+        default: "main"
+        required: true
+      mode:
+        description: "Install mode"
+        default: "vibe"
+        required: true
+        type: choice
+        options:
+          - vibe
+          - safe
+      expect_ubuntu:
+        description: "Expected Ubuntu VERSION_ID on the fresh host"
+        default: "25.10"
+        required: true
+      expect_final_ubuntu:
+        description: "Expected Ubuntu VERSION_ID after install/resume"
+        default: "25.10"
+        required: true
+      allow_existing_ubuntu:
+        description: "Allow ubuntu user to exist before install"
+        default: false
+        required: true
+        type: boolean
+      allow_install_reboot:
+        description: "Allow SSH disconnect/reconnect during installer-driven OS upgrade"
+        default: false
+        required: true
+        type: boolean
+      install_timeout_seconds:
+        description: "Timeout for each installer run"
+        default: "14400"
+        required: true
+      post_reboot_timeout_seconds:
+        description: "Timeout for post-reboot resume/assertions"
+        default: "14400"
+        required: true
+  workflow_call:
+    inputs:
+      ref:
+        description: "ACFS ref to install"
+        default: "main"
+        required: false
+        type: string
+      mode:
+        description: "Install mode"
+        default: "vibe"
+        required: false
+        type: string
+      expect_ubuntu:
+        description: "Expected Ubuntu VERSION_ID on the fresh host"
+        default: "25.10"
+        required: false
+        type: string
+      expect_final_ubuntu:
+        description: "Expected Ubuntu VERSION_ID after install/resume"
+        default: "25.10"
+        required: false
+        type: string
+      allow_existing_ubuntu:
+        description: "Allow ubuntu user to exist before install"
+        default: false
+        required: false
+        type: boolean
+      allow_install_reboot:
+        description: "Allow SSH disconnect/reconnect during installer-driven OS upgrade"
+        default: false
+        required: false
+        type: boolean
+      install_timeout_seconds:
+        description: "Timeout for each installer run"
+        default: "14400"
+        required: false
+        type: string
+      post_reboot_timeout_seconds:
+        description: "Timeout for post-reboot resume/assertions"
+        default: "14400"
+        required: false
+        type: string
+    secrets:
+      ACFS_FACTORY_SSH_TARGET:
+        required: true
+      ACFS_FACTORY_SSH_PRIVATE_KEY:
+        required: true
+      ACFS_FACTORY_SSH_PORT:
+        required: false
+      ACFS_FACTORY_PUBLIC_KEY:
+        required: false
+
+jobs:
+  factory-e2e:
+    name: Fresh Ubuntu ${{ inputs.expect_ubuntu || '25.10' }} factory install
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check factory host secrets
+        id: config
+        env:
+          SSH_TARGET: ${{ secrets.ACFS_FACTORY_SSH_TARGET }}
+          SSH_PRIVATE_KEY: ${{ secrets.ACFS_FACTORY_SSH_PRIVATE_KEY }}
+        run: |
+          if [[ -z "${SSH_TARGET:-}" || -z "${SSH_PRIVATE_KEY:-}" ]]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping factory E2E because ACFS_FACTORY_SSH_TARGET or ACFS_FACTORY_SSH_PRIVATE_KEY is not configured."
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Prepare SSH material
+        if: steps.config.outputs.enabled == 'true'
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.ACFS_FACTORY_SSH_PRIVATE_KEY }}
+          PUBLIC_KEY: ${{ secrets.ACFS_FACTORY_PUBLIC_KEY }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/acfs-factory-e2e"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$RUNNER_TEMP/acfs-factory-e2e/id"
+          chmod 600 "$RUNNER_TEMP/acfs-factory-e2e/id"
+          if [[ -n "${PUBLIC_KEY:-}" ]]; then
+            printf '%s\n' "$PUBLIC_KEY" > "$RUNNER_TEMP/acfs-factory-e2e/id.pub"
+          fi
+
+      - name: Run factory installer E2E
+        if: steps.config.outputs.enabled == 'true'
+        env:
+          SSH_TARGET: ${{ secrets.ACFS_FACTORY_SSH_TARGET }}
+          SSH_PORT: ${{ secrets.ACFS_FACTORY_SSH_PORT }}
+          INPUT_REF: ${{ inputs.ref || 'main' }}
+          INPUT_MODE: ${{ inputs.mode || 'vibe' }}
+          INPUT_EXPECT_UBUNTU: ${{ inputs.expect_ubuntu || '25.10' }}
+          INPUT_EXPECT_FINAL_UBUNTU: ${{ inputs.expect_final_ubuntu || '25.10' }}
+          INPUT_ALLOW_EXISTING_UBUNTU: ${{ inputs.allow_existing_ubuntu || false }}
+          INPUT_ALLOW_INSTALL_REBOOT: ${{ inputs.allow_install_reboot || false }}
+          INPUT_TIMEOUT: ${{ inputs.install_timeout_seconds || '14400' }}
+          INPUT_POST_REBOOT_TIMEOUT: ${{ inputs.post_reboot_timeout_seconds || '14400' }}
+        run: |
+          args=(
+            --ssh-target "$SSH_TARGET"
+            --ssh-key "$RUNNER_TEMP/acfs-factory-e2e/id"
+            --ref "$INPUT_REF"
+            --mode "$INPUT_MODE"
+            --expect-ubuntu "$INPUT_EXPECT_UBUNTU"
+            --expect-final-ubuntu "$INPUT_EXPECT_FINAL_UBUNTU"
+            --install-timeout "$INPUT_TIMEOUT"
+            --post-reboot-timeout "$INPUT_POST_REBOOT_TIMEOUT"
+            --artifacts-dir "$GITHUB_WORKSPACE/tests/artifacts/factory-e2e"
+          )
+          if [[ -n "${SSH_PORT:-}" ]]; then
+            args+=(--ssh-port "$SSH_PORT")
+          fi
+          if [[ -f "$RUNNER_TEMP/acfs-factory-e2e/id.pub" ]]; then
+            args+=(--public-key-file "$RUNNER_TEMP/acfs-factory-e2e/id.pub")
+          fi
+          if [[ "$INPUT_ALLOW_EXISTING_UBUNTU" == "true" ]]; then
+            args+=(--allow-existing-ubuntu)
+          fi
+          if [[ "$INPUT_ALLOW_INSTALL_REBOOT" == "true" ]]; then
+            args+=(--allow-install-reboot)
+          fi
+          bash tests/vm/test_factory_install_ubuntu.sh "${args[@]}"
+
+      - name: Upload factory E2E artifacts
+        if: always() && steps.config.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: factory-installer-e2e
+          path: tests/artifacts/factory-e2e

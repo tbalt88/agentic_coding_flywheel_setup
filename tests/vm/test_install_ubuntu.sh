@@ -6,9 +6,9 @@
 # `acfs doctor` as the `ubuntu` user.
 #
 # Usage:
-#   ./tests/vm/test_install_ubuntu.sh              # defaults to 24.04
-#   ./tests/vm/test_install_ubuntu.sh --all        # run 24.04 + 25.04
-#   ./tests/vm/test_install_ubuntu.sh --ubuntu 25.04
+#   ./tests/vm/test_install_ubuntu.sh              # defaults to 25.10
+#   ./tests/vm/test_install_ubuntu.sh --all        # run 24.04 + 25.04 + 25.10
+#   ./tests/vm/test_install_ubuntu.sh --ubuntu 25.10
 #   ./tests/vm/test_install_ubuntu.sh --mode safe
 #
 # Requirements:
@@ -25,8 +25,8 @@ Usage:
   ./tests/vm/test_install_ubuntu.sh [options]
 
 Options:
-  --ubuntu <version>   Ubuntu tag (e.g. 24.04, 25.04). Repeatable.
-  --all                Run on 24.04 and 25.04.
+  --ubuntu <version>   Ubuntu tag (e.g. 24.04, 25.04, 25.10). Repeatable.
+  --all                Run on 24.04, 25.04, and 25.10.
   --mode <mode>        Install mode: vibe or safe (default: vibe).
   --strict             Enable strict installer mode (checksum mismatches fail).
   --help               Show help.
@@ -34,7 +34,7 @@ Options:
 Examples:
   ./tests/vm/test_install_ubuntu.sh
   ./tests/vm/test_install_ubuntu.sh --all
-  ./tests/vm/test_install_ubuntu.sh --ubuntu 25.04
+  ./tests/vm/test_install_ubuntu.sh --ubuntu 25.10
   ./tests/vm/test_install_ubuntu.sh --mode safe
 EOF
 }
@@ -62,7 +62,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --all)
-      ubuntus=("24.04" "25.04")
+      ubuntus=("24.04" "25.04" "25.10")
       shift
       ;;
     --mode)
@@ -93,7 +93,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ ${#ubuntus[@]} -eq 0 ]]; then
-  ubuntus=("24.04")
+  ubuntus=("25.10")
 fi
 
 run_one() {
@@ -113,7 +113,7 @@ run_one() {
 
   docker pull "$image" >/dev/null
 
-  docker run --rm -t \
+  docker run --rm \
     -e DEBIAN_FRONTEND=noninteractive \
     -e ACFS_TEST_MODE="$MODE" \
     -e ACFS_TEST_STRICT="$STRICT" \

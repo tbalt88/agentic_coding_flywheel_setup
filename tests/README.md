@@ -26,7 +26,8 @@ tests/
 │   └── expected_outputs/    # Golden files for comparison
 ├── logs/                    # Test execution logs (gitignored)
 ├── vm/                      # Integration tests (Docker)
-│   └── test_install_ubuntu.sh
+│   ├── test_install_ubuntu.sh
+│   └── test_factory_install_ubuntu.sh
 └── web/                     # Web app tests
 ```
 
@@ -96,8 +97,17 @@ brew install expect
 # Run Docker-based installer test
 ./tests/vm/test_install_ubuntu.sh
 
+# Run the full Docker Ubuntu matrix
+./tests/vm/test_install_ubuntu.sh --all
+
 # Run focused fresh-root curl|bash regression
 ./tests/vm/test_fresh_root_bootstrap_regression.sh
+
+# Run authoritative factory-host E2E against a disposable fresh Ubuntu 25.10 VM/VPS
+./tests/vm/test_factory_install_ubuntu.sh --ssh-target root@203.0.113.10
+
+# Run slow real-host upgrade/resume E2E from fresh Ubuntu 24.04 to 25.10
+./tests/vm/test_factory_install_ubuntu.sh --ssh-target root@203.0.113.10 --expect-ubuntu 24.04 --expect-final-ubuntu 25.10 --allow-install-reboot
 
 # Run real cross-agent resume matrix (requires authenticated CLI sessions)
 bash ./tests/e2e/test_cross_agent_resume_e2e.sh
@@ -108,6 +118,16 @@ ACFS_INCLUDE_SELF_RESUME_BASELINE=true bash ./tests/e2e/test_cross_agent_resume_
 
 The cross-agent resume matrix writes detailed artifacts to `tests/e2e/logs/`.
 By default it treats cross-CLI session isolation as expected behavior; strict mode exits non-zero when foreign session-id continuity checks fail.
+
+#### Docker vs Factory-Host Installer E2E
+
+`tests/vm/test_install_ubuntu.sh` is the fast regression harness. It runs the installer in Ubuntu containers, including the full `24.04`, `25.04`, and `25.10` matrix when invoked with `--all`. It is appropriate for CI, checksum drift, module-install smoke coverage, and idempotency checks.
+
+`tests/vm/test_factory_install_ubuntu.sh` is the authoritative beginner-path harness. It requires SSH access to a freshly provisioned systemd-capable Ubuntu host, defaults to initial Ubuntu `25.10` and final Ubuntu `25.10`, runs the public `curl|bash` installer as root, and fails by default if the `ubuntu` user already exists before install. It then verifies user creation, SSH key merge/de-dupe behavior, passwordless sudo in vibe mode, `acfs doctor`, core stack binaries, Agent Mail health, systemd user services, the nightly timer, and a second idempotent installer run.
+
+For the slower OS upgrade/resume path, provision a fresh Ubuntu `24.04` host and run with `--expect-ubuntu 24.04 --expect-final-ubuntu 25.10 --allow-install-reboot`. The harness treats SSH disconnects during installer-driven reboots as expected, reconnects, waits for ACFS resume to finish, then runs the same post-install and idempotency assertions.
+
+The matching GitHub Actions workflow is `.github/workflows/installer-factory-e2e.yml`. Configure `ACFS_FACTORY_SSH_TARGET` and `ACFS_FACTORY_SSH_PRIVATE_KEY` repository secrets to run it manually or call it from a provisioning workflow after creating a disposable VM/VPS.
 
 ## Writing Tests
 

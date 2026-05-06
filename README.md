@@ -2306,9 +2306,14 @@ jobs:
     - Runs full installation in Docker
     - Verifies all tools installed correctly
     - Runs acfs doctor to confirm health
+
+  factory-e2e:
+    - Runs the literal public curl|bash installer on a fresh real Ubuntu host
+    - Requires systemd, SSH, and a disposable factory VM/VPS
+    - Verifies ubuntu user creation, SSH key merge, user services, tool health, and idempotency
 ```
 
-This ensures the installer works on all supported Ubuntu versions and catches shell scripting issues early.
+Docker catches shell and package regressions early. The factory-host E2E is the authoritative release gate for the real beginner VPS path because it exercises systemd, SSH, login/user-service behavior, and provider image defaults that containers cannot model.
 
 ### Website Deployment (`website.yml`)
 
@@ -2385,15 +2390,36 @@ jobs:
 
 ### Installer Canary (Docker) (`installer-canary.yml`)
 
-Runs the **full installer end-to-end** inside fresh Ubuntu containers on a daily schedule.
+Runs the installer inside fresh Ubuntu containers on a daily schedule. This is a fast regression canary, not the final proof of the factory VPS path.
 
 ```yaml
 schedule: "30 7 * * *" # daily
 jobs:
   canary:
     - Run tests/vm/test_install_ubuntu.sh (vibe mode)
+    - Defaults to Ubuntu 25.10; --all covers 24.04, 25.04, and 25.10
     - Uses ACFS_CHECKSUMS_REF=main for freshest hashes
 ```
+
+### Factory Installer E2E (`installer-factory-e2e.yml`)
+
+Runs the literal public installer on a real, disposable Ubuntu host over SSH. Use this as the authoritative release gate for the first-run VPS experience.
+
+```yaml
+workflow_dispatch:
+  inputs:
+    ref: main
+    mode: vibe
+    expect_ubuntu: "25.10"
+    expect_final_ubuntu: "25.10"
+required secrets:
+  ACFS_FACTORY_SSH_TARGET: root@fresh-host
+  ACFS_FACTORY_SSH_PRIVATE_KEY: private key for that host
+```
+
+The target host must be freshly provisioned. By default the harness fails if the `ubuntu` user already exists before install, because the real beginner path must prove ACFS creates that user automatically.
+
+For the slower upgrade/resume gate, provision a fresh Ubuntu 24.04 host and run the same workflow or script with `--expect-ubuntu 24.04 --expect-final-ubuntu 25.10 --allow-install-reboot`.
 
 ### Playwright E2E Tests (`playwright.yml`)
 
@@ -2569,7 +2595,8 @@ agentic_coding_flywheel_setup/
 │
 └── tests/
     └── vm/
-        └── test_install_ubuntu.sh # Docker integration test
+        ├── test_install_ubuntu.sh # Docker integration test
+        └── test_factory_install_ubuntu.sh # Real VM/VPS factory install test
 ```
 
 ---
@@ -2604,6 +2631,12 @@ shellcheck install.sh scripts/lib/*.sh
 
 # Full installer integration test (Docker, same as CI)
 ./tests/vm/test_install_ubuntu.sh
+
+# Authoritative factory-host E2E (requires a disposable fresh Ubuntu 25.10 VM/VPS)
+./tests/vm/test_factory_install_ubuntu.sh --ssh-target root@203.0.113.10
+
+# Slow real-host upgrade/resume gate from Ubuntu 24.04 to 25.10
+./tests/vm/test_factory_install_ubuntu.sh --ssh-target root@203.0.113.10 --expect-ubuntu 24.04 --expect-final-ubuntu 25.10 --allow-install-reboot
 ```
 
 ### Security Verification
@@ -2680,6 +2713,7 @@ harness_summary  # Outputs: 15 passed, 0 failed, 2 skipped
 | Test | Purpose |
 |------|---------|
 | `test_install_ubuntu.sh` | Full Docker-based installation |
+| `test_factory_install_ubuntu.sh` | Real systemd VM/VPS factory install from public curl\|bash |
 | `test_acfs_update.sh` | Update mechanism validation |
 | `bootstrap_offline_checks.sh` | Offline system readiness |
 | `resume_checks.sh` | State resume validation |
@@ -2690,6 +2724,15 @@ harness_summary  # Outputs: 15 passed, 0 failed, 2 skipped
 ```bash
 # Full Docker integration test
 ./tests/vm/test_install_ubuntu.sh
+
+# Full Docker integration matrix
+./tests/vm/test_install_ubuntu.sh --all
+
+# Real factory-host integration test
+./tests/vm/test_factory_install_ubuntu.sh --ssh-target root@203.0.113.10
+
+# Real upgrade/resume integration test
+./tests/vm/test_factory_install_ubuntu.sh --ssh-target root@203.0.113.10 --expect-ubuntu 24.04 --expect-final-ubuntu 25.10 --allow-install-reboot
 
 # Selection logic tests
 ./tests/vm/selection_checks.sh
