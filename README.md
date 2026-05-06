@@ -2421,6 +2421,17 @@ The target host must be freshly provisioned. By default the harness fails if the
 
 For the slower upgrade/resume gate, provision a fresh Ubuntu 24.04 host and run the same workflow or script with `--expect-ubuntu 24.04 --expect-final-ubuntu 25.10 --allow-install-reboot`.
 
+### Local QEMU Factory E2E (`test_factory_install_qemu.sh`)
+
+Runs the same factory-host harness inside a real local VM instead of a Docker container. The wrapper downloads and verifies the official Ubuntu cloud image, boots it with QEMU/KVM and cloud-init, exposes root SSH on a local forwarded port, then delegates to `tests/vm/test_factory_install_ubuntu.sh`.
+
+```bash
+sudo apt-get install -y qemu-system-x86 qemu-utils cloud-image-utils openssh-client
+./tests/vm/test_factory_install_qemu.sh
+```
+
+Use this when Docker passes but you need local proof for systemd, sshd, cloud-init, kernel, filesystem, and login behavior before spending time on a disposable provider VPS.
+
 ### Playwright E2E Tests (`playwright.yml`)
 
 Full browser testing of the wizard website:
@@ -2596,7 +2607,8 @@ agentic_coding_flywheel_setup/
 └── tests/
     └── vm/
         ├── test_install_ubuntu.sh # Docker integration test
-        └── test_factory_install_ubuntu.sh # Real VM/VPS factory install test
+        ├── test_factory_install_ubuntu.sh # Real VM/VPS factory install test
+        └── test_factory_install_qemu.sh # Local QEMU/KVM factory install test
 ```
 
 ---
@@ -2634,6 +2646,9 @@ shellcheck install.sh scripts/lib/*.sh
 
 # Authoritative factory-host E2E (requires a disposable fresh Ubuntu 25.10 VM/VPS)
 ./tests/vm/test_factory_install_ubuntu.sh --ssh-target root@203.0.113.10
+
+# Local authoritative VM E2E (QEMU/KVM + official Ubuntu cloud image)
+./tests/vm/test_factory_install_qemu.sh
 
 # Slow real-host upgrade/resume gate from Ubuntu 24.04 to 25.10
 ./tests/vm/test_factory_install_ubuntu.sh --ssh-target root@203.0.113.10 --expect-ubuntu 24.04 --expect-final-ubuntu 25.10 --allow-install-reboot
@@ -2714,6 +2729,7 @@ harness_summary  # Outputs: 15 passed, 0 failed, 2 skipped
 |------|---------|
 | `test_install_ubuntu.sh` | Full Docker-based installation |
 | `test_factory_install_ubuntu.sh` | Real systemd VM/VPS factory install from public curl\|bash |
+| `test_factory_install_qemu.sh` | Local QEMU/KVM factory install using Ubuntu cloud images |
 | `test_acfs_update.sh` | Update mechanism validation |
 | `bootstrap_offline_checks.sh` | Offline system readiness |
 | `resume_checks.sh` | State resume validation |
@@ -2730,6 +2746,9 @@ harness_summary  # Outputs: 15 passed, 0 failed, 2 skipped
 
 # Real factory-host integration test
 ./tests/vm/test_factory_install_ubuntu.sh --ssh-target root@203.0.113.10
+
+# Local QEMU/KVM factory-host integration test
+./tests/vm/test_factory_install_qemu.sh
 
 # Real upgrade/resume integration test
 ./tests/vm/test_factory_install_ubuntu.sh --ssh-target root@203.0.113.10 --expect-ubuntu 24.04 --expect-final-ubuntu 25.10 --allow-install-reboot

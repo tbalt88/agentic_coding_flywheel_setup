@@ -25,9 +25,10 @@ tests/
 │   ├── sample_projects/     # Mock project directories
 │   └── expected_outputs/    # Golden files for comparison
 ├── logs/                    # Test execution logs (gitignored)
-├── vm/                      # Integration tests (Docker)
+├── vm/                      # Installer integration tests
 │   ├── test_install_ubuntu.sh
-│   └── test_factory_install_ubuntu.sh
+│   ├── test_factory_install_ubuntu.sh
+│   └── test_factory_install_qemu.sh
 └── web/                     # Web app tests
 ```
 
@@ -106,6 +107,9 @@ brew install expect
 # Run authoritative factory-host E2E against a disposable fresh Ubuntu 25.10 VM/VPS
 ./tests/vm/test_factory_install_ubuntu.sh --ssh-target root@203.0.113.10
 
+# Run local authoritative VM E2E with QEMU/KVM and the official Ubuntu cloud image
+./tests/vm/test_factory_install_qemu.sh
+
 # Run slow real-host upgrade/resume E2E from fresh Ubuntu 24.04 to 25.10
 ./tests/vm/test_factory_install_ubuntu.sh --ssh-target root@203.0.113.10 --expect-ubuntu 24.04 --expect-final-ubuntu 25.10 --allow-install-reboot
 
@@ -124,6 +128,8 @@ By default it treats cross-CLI session isolation as expected behavior; strict mo
 `tests/vm/test_install_ubuntu.sh` is the fast regression harness. It runs the installer in Ubuntu containers, including the full `24.04`, `25.04`, and `25.10` matrix when invoked with `--all`. It is appropriate for CI, checksum drift, module-install smoke coverage, and idempotency checks.
 
 `tests/vm/test_factory_install_ubuntu.sh` is the authoritative beginner-path harness. It requires SSH access to a freshly provisioned systemd-capable Ubuntu host, defaults to initial Ubuntu `25.10` and final Ubuntu `25.10`, runs the public `curl|bash` installer as root, and fails by default if the `ubuntu` user already exists before install. It then verifies user creation, SSH key merge/de-dupe behavior, passwordless sudo in vibe mode, `acfs doctor`, core stack binaries, Agent Mail health, systemd user services, the nightly timer, and a second idempotent installer run.
+
+`tests/vm/test_factory_install_qemu.sh` is the local no-Docker version of that same gate. It downloads and verifies the official Ubuntu cloud image, boots it under QEMU/KVM with cloud-init and root SSH, then calls `test_factory_install_ubuntu.sh` against the VM. Use it when you need realistic systemd, sshd, cloud-init, kernel, and filesystem behavior without provisioning a paid VPS.
 
 For the slower OS upgrade/resume path, provision a fresh Ubuntu `24.04` host and run with `--expect-ubuntu 24.04 --expect-final-ubuntu 25.10 --allow-install-reboot`. The harness treats SSH disconnects during installer-driven reboots as expected, reconnects, waits for ACFS resume to finish, then runs the same post-install and idempotency assertions.
 
