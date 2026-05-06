@@ -963,8 +963,19 @@ load_checksums() {
         fi
 
         # Match sha256 value for the current tool.
-        if [[ -n "$current_tool" ]] && [[ "$line" =~ sha256:[[:space:]]*['\"]?([0-9A-Fa-f]{64})['\"]? ]]; then
-            parsed_checksums["$current_tool"]="${BASH_REMATCH[1],,}"
+        if [[ -n "$current_tool" ]] && [[ "$line" =~ ^[[:space:]]*sha256:[[:space:]]*(.*)$ ]]; then
+            local checksum_value="${BASH_REMATCH[1]}"
+            checksum_value="${checksum_value%%#*}"
+            checksum_value="${checksum_value%"${checksum_value##*[![:space:]]}"}"
+            checksum_value="${checksum_value#"${checksum_value%%[![:space:]]*}"}"
+            checksum_value="${checksum_value%\"}"
+            checksum_value="${checksum_value#\"}"
+            checksum_value="${checksum_value%\'}"
+            checksum_value="${checksum_value#\'}"
+
+            if [[ "$checksum_value" =~ ^[0-9A-Fa-f]{64}$ ]]; then
+                parsed_checksums["$current_tool"]="${checksum_value,,}"
+            fi
         fi
     done < "$file"
 

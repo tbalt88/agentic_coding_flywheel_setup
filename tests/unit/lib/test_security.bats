@@ -507,6 +507,40 @@ EOF
     assert_equal "${KNOWN_INSTALLERS["txn_tool"]}" "https://example.com/good"
 }
 
+@test "load_checksums: rejects sha256 scalars with trailing garbage" {
+    local good_sha="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    local bad_file
+    bad_file="$(create_temp_file)"
+
+    declare -gA LOADED_CHECKSUMS=()
+    KNOWN_INSTALLERS["txn_tool"]="https://example.com/old"
+
+    cat > "$CHECKSUMS_FILE" <<EOF
+installers:
+  txn_tool:
+    url: "https://example.com/good"
+    sha256: "$good_sha"
+EOF
+
+    load_checksums
+    assert_equal "$?" "0"
+    assert_equal "$(get_checksum "txn_tool")" "$good_sha"
+    assert_equal "${KNOWN_INSTALLERS["txn_tool"]}" "https://example.com/good"
+
+    cat > "$bad_file" <<EOF
+installers:
+  txn_tool:
+    url: "https://example.com/bad"
+    sha256: "${good_sha}trailing"
+EOF
+
+    if load_checksums "$bad_file"; then
+        fail "checksum with trailing garbage unexpectedly loaded"
+    fi
+    assert_equal "$(get_checksum "txn_tool")" "$good_sha"
+    assert_equal "${KNOWN_INSTALLERS["txn_tool"]}" "https://example.com/good"
+}
+
 @test "acfs_checksums_file_looks_valid: requires complete installer metadata" {
     local full_file
     local partial_file
