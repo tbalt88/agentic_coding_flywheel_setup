@@ -178,6 +178,18 @@ ssh ubuntu@YOUR_IP_ADDRESS
 
 ## Hetzner-Specific Notes
 
+### Cloud-Init Template
+For automated server bootstrap, use the companion cloud-init template:
+
+```bash
+hcloud server create \
+  --name acfs-dev \
+  --type cpx31 \
+  --image ubuntu-24.04 \
+  --ssh-key your-key-name \
+  --user-data-from-file scripts/providers/hetzner-cloud-init.yml
+```
+
 ### Default User
 Hetzner uses `root` by default. Create the `ubuntu` user manually (see Step 11).
 

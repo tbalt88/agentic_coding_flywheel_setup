@@ -15,7 +15,7 @@
 #     --type cpx31 \
 #     --image ubuntu-24.04 \
 #     --ssh-key your-key-name \
-#     --user-data-from-file templates/hetzner-cloud-init.yml
+#     --user-data-from-file scripts/providers/hetzner-cloud-init.yml
 #
 # After boot (~5-10 min), SSH in and ACFS will be fully installed.
 # To monitor install progress: tail -f /var/log/acfs/install.log
