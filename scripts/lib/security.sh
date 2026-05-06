@@ -375,6 +375,7 @@ declare -gA KNOWN_INSTALLERS=(
     [asb]="https://raw.githubusercontent.com/Dicklesworthstone/agent_settings_backup_script/main/install.sh"
     [pcr]="https://raw.githubusercontent.com/Dicklesworthstone/post_compact_reminder/main/install-post-compact-reminder.sh"
 )
+declare -ga ACFS_SECURITY_REQUIRED_INSTALLERS=("${!KNOWN_INSTALLERS[@]}")
 
 # ============================================================
 # Checksum Verification Policy
@@ -1079,7 +1080,7 @@ acfs_checksums_file_looks_valid() {
         fi
     done < "$file"
 
-    for tool in "${!KNOWN_INSTALLERS[@]}"; do
+    for tool in "${ACFS_SECURITY_REQUIRED_INSTALLERS[@]}"; do
         if [[ -z "${parsed_installers[$tool]:-}" ]] || [[ -z "${parsed_checksums[$tool]:-}" ]]; then
             return 1
         fi

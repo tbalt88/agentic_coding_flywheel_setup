@@ -22,7 +22,7 @@ write_security_checksums_fixture() {
     local index=1
 
     printf 'installers:\n' > "$output_file"
-    for tool in "${!KNOWN_INSTALLERS[@]}"; do
+    for tool in "${ACFS_SECURITY_REQUIRED_INSTALLERS[@]}"; do
         printf -v checksum '%064d' "$index"
         printf '  %s:\n' "$tool" >> "$output_file"
         printf '    url: "%s"\n' "${KNOWN_INSTALLERS[$tool]}" >> "$output_file"
@@ -526,6 +526,17 @@ EOF
 
     run acfs_checksums_file_looks_valid "$partial_file"
     assert_failure
+}
+
+@test "acfs_checksums_file_looks_valid: ignores dynamic local installer keys" {
+    local full_file
+    full_file="$(create_temp_file)"
+
+    write_security_checksums_fixture "$full_file"
+    KNOWN_INSTALLERS["local_only_tool"]="https://example.com/local-only.sh"
+
+    run acfs_checksums_file_looks_valid "$full_file"
+    assert_success
 }
 
 @test "acfs_refresh_loaded_checksums_from_remote: partial remote metadata preserves loaded state" {
