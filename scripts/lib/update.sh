@@ -2921,6 +2921,62 @@ sync_acfs_global_wrapper() {
     return 0
 }
 
+sync_acfs_global_command_links() {
+    local acfs_home=""
+    local global_bin_dir="${ACFS_GLOBAL_BIN_DIR:-/usr/local/bin}"
+    local spec=""
+    local source_path=""
+    local dest_path=""
+    local sudo_bin=""
+
+    acfs_home="$(update_runtime_acfs_home 2>/dev/null || true)"
+    [[ -n "$acfs_home" ]] || return 0
+    [[ -n "$global_bin_dir" && "$global_bin_dir" == /* && "$global_bin_dir" != "/" ]] || return 0
+
+    for spec in \
+        "$acfs_home/bin/acfs-update:$global_bin_dir/acfs-update" \
+        "$acfs_home/onboard/onboard.sh:$global_bin_dir/onboard"
+    do
+        source_path="${spec%%:*}"
+        dest_path="${spec#*:}"
+
+        if [[ ! -x "$source_path" ]]; then
+            log_to_file "Skipped linking $dest_path -> $source_path (source missing)"
+            continue
+        fi
+
+        if [[ -L "$dest_path" ]] && [[ "$(readlink "$dest_path" 2>/dev/null || true)" == "$source_path" ]]; then
+            continue
+        fi
+
+        if [[ -e "$dest_path" && ! -L "$dest_path" ]]; then
+            log_to_file "Skipped linking $dest_path -> $source_path (non-symlink exists)"
+            continue
+        fi
+
+        if [[ "${DRY_RUN:-false}" == "true" ]]; then
+            log_to_file "Would link $dest_path -> $source_path"
+            continue
+        fi
+
+        if mkdir -p "$global_bin_dir" 2>/dev/null && ln -sfn "$source_path" "$dest_path" 2>/dev/null; then
+            log_to_file "Linked $dest_path -> $source_path"
+            continue
+        fi
+
+        sudo_bin="$(update_system_binary_path sudo 2>/dev/null || true)"
+        if [[ -n "$sudo_bin" ]] && "$sudo_bin" -n true >/dev/null 2>&1; then
+            "$sudo_bin" -n mkdir -p "$global_bin_dir" 2>/dev/null || true
+            if "$sudo_bin" -n ln -sfn "$source_path" "$dest_path" 2>/dev/null; then
+                log_to_file "Linked $dest_path -> $source_path"
+                continue
+            fi
+        fi
+
+        log_to_file "Skipped linking $dest_path -> $source_path (needs root)"
+    done
+}
+
 # ============================================================
 # Checksums Refresh (Auto-update from GitHub)
 # ============================================================
@@ -3780,9 +3836,11 @@ _acfs_refresh_security_from_fetched_remote() {
     if [[ "$_sec_sync_deployed_from_remote" == "true" ]]; then
         sync_acfs_deployed "origin/${_sec_remote_branch}"
         sync_acfs_global_wrapper "origin/${_sec_remote_branch}"
+        sync_acfs_global_command_links
     elif [[ "$_sec_files_refreshed" == "true" ]]; then
         sync_acfs_deployed
         sync_acfs_global_wrapper
+        sync_acfs_global_command_links
     fi
 }
 
@@ -4191,6 +4249,7 @@ update_acfs_self() {
     # the re-exec and future runs will use the old code.
     sync_acfs_deployed
     sync_acfs_global_wrapper
+    sync_acfs_global_command_links
 
     # Check if update.sh itself changed - if so, re-exec
     local new_hash=""
@@ -5843,6 +5902,7 @@ update_shell() {
     sync_acfs_zshrc
     sync_acfs_deployed
     sync_acfs_global_wrapper
+    sync_acfs_global_command_links
 }
 
 # ============================================================

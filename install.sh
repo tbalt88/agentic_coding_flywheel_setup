@@ -3830,6 +3830,24 @@ acfs_link_primary_bin_command() {
     run_as_target ln -sf "$source_path" "$dest_path"
 }
 
+acfs_link_global_bin_command() {
+    local source_path="$1"
+    local command_name="$2"
+    local dest_path="/usr/local/bin/$command_name"
+
+    if [[ -e "$dest_path" && ! -L "$dest_path" ]]; then
+        log_error "Refusing to replace existing non-symlink global command: $dest_path"
+        return 1
+    fi
+
+    if [[ -n "$SUDO" ]]; then
+        "$SUDO" ln -sf "$source_path" "$dest_path"
+        return $?
+    fi
+
+    ln -sf "$source_path" "$dest_path"
+}
+
 acfs_install_executable_into_primary_bin() {
     local src_path="$1"
     local command_name="$2"
@@ -6864,6 +6882,7 @@ finalize() {
 
     try_step "Creating bin directory ($ACFS_BIN_DIR)" acfs_ensure_primary_bin_dir || return 1
     try_step "Linking onboard command" acfs_link_primary_bin_command "$ACFS_HOME/onboard/onboard.sh" "onboard" || return 1
+    try_step "Linking global onboard command" acfs_link_global_bin_command "$ACFS_HOME/onboard/onboard.sh" "onboard" || return 1
 
     # Install acfs scripts (for acfs CLI subcommands)
     log_detail "Installing acfs scripts"
@@ -6922,6 +6941,7 @@ finalize() {
     try_step "Setting acfs-update permissions" $SUDO chmod 755 "$ACFS_HOME/bin/acfs-update" || return 1
     try_step "Setting acfs-update ownership" $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/bin/acfs-update" || return 1
     try_step "Linking acfs-update command" acfs_link_primary_bin_command "$ACFS_HOME/bin/acfs-update" "acfs-update" || return 1
+    try_step "Linking global acfs-update command" acfs_link_global_bin_command "$ACFS_HOME/bin/acfs-update" "acfs-update" || return 1
 
     # Install root AGENTS.md generator (if available) and generate /AGENTS.md once
     if try_step "Installing flywheel-update-agents-md" install_asset "scripts/generate-root-agents-md.sh" "$ACFS_HOME/bin/flywheel-update-agents-md"; then

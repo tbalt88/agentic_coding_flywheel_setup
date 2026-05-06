@@ -8469,6 +8469,38 @@ EOF
     assert_success
 }
 
+@test "global core command link sync publishes onboard and acfs-update" {
+    local temp_root
+    local deployed_home
+    local global_bin
+    local log_file
+
+    temp_root="$(create_temp_dir)"
+    deployed_home="$temp_root/deployed-acfs"
+    global_bin="$temp_root/global-bin"
+    log_file="$temp_root/update.log"
+
+    mkdir -p "$deployed_home/bin" "$deployed_home/onboard" "$global_bin"
+    printf "#!/usr/bin/env bash\nprintf 'update\\n'\n" > "$deployed_home/bin/acfs-update"
+    printf "#!/usr/bin/env bash\nprintf 'onboard\\n'\n" > "$deployed_home/onboard/onboard.sh"
+    chmod 755 "$deployed_home/bin/acfs-update" "$deployed_home/onboard/onboard.sh"
+
+    UPDATE_LOG_FILE="$log_file"
+    ACFS_GLOBAL_BIN_DIR="$global_bin"
+    DRY_RUN=false
+
+    update_runtime_acfs_home() { printf '%s\n' "$deployed_home"; }
+
+    run sync_acfs_global_command_links
+    assert_success
+    [[ "$(readlink "$global_bin/acfs-update")" == "$deployed_home/bin/acfs-update" ]]
+    [[ "$(readlink "$global_bin/onboard")" == "$deployed_home/onboard/onboard.sh" ]]
+    run grep -F "Linked $global_bin/acfs-update -> $deployed_home/bin/acfs-update" "$log_file"
+    assert_success
+    run grep -F "Linked $global_bin/onboard -> $deployed_home/onboard/onboard.sh" "$log_file"
+    assert_success
+}
+
 @test "self-update done sentinel does not sync from unexpected origin" {
     local temp_root
     local repo_root
