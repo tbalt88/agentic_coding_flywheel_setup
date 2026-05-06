@@ -1,11 +1,11 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * VPS Pricing Research Script
  *
  * Automated research tool to scrape current VPS pricing from Contabo and OVH.
  * Run this periodically to verify that wizard pricing information is accurate.
  *
- * Usage: cd apps/web && node scripts/research-vps-pricing.mjs
+ * Usage: cd apps/web && bun scripts/research/vps-pricing.mjs
  *
  * Prerequisites: @playwright/test must be installed (already in devDependencies)
  *
@@ -15,12 +15,12 @@
  */
 
 import { chromium } from '@playwright/test';
-import { mkdirSync } from 'fs';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
+import { mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SCREENSHOT_DIR = join(__dirname, '..', '..', '..', 'research_screenshots');
+const SCREENSHOT_DIR = join(__dirname, '..', '..', '..', '..', 'research_screenshots');
 let hadResearchError = false;
 
 function getErrorMessage(error) {
