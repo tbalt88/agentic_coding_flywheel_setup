@@ -61,7 +61,7 @@ on:
   workflow_call:
     inputs:
       backend:
-        description: "Factory backend. workflow_call is intended for externally provisioned real hosts."
+        description: "Factory backend. Use qemu with a KVM-capable runner or real-host with SSH secrets."
         default: "real-host"
         required: false
         type: string
@@ -112,9 +112,9 @@ on:
         type: string
     secrets:
       ACFS_FACTORY_SSH_TARGET:
-        required: true
+        required: false
       ACFS_FACTORY_SSH_PRIVATE_KEY:
-        required: true
+        required: false
       ACFS_FACTORY_SSH_PORT:
         required: false
       ACFS_FACTORY_PUBLIC_KEY:

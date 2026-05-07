@@ -2417,12 +2417,14 @@ workflow_dispatch:
     expect_final_ubuntu: "25.10"
 repository_dispatch:
   types: [acfs-factory-host-ready]
-required secrets:
+real-host secrets:
   ACFS_FACTORY_SSH_PRIVATE_KEY: private key for real-host backend
   ACFS_FACTORY_SSH_TARGET: optional fallback root@fresh-host for real-host backend
 ```
 
 Standard GitHub-hosted runners do not provide a contractual nested-virtualization environment. If the QEMU backend runs without `/dev/kvm`, the workflow fails at the KVM preflight with an environment-specific error before invoking the installer.
+
+Reusable workflow callers may use the QEMU backend without passing SSH secrets. The real-host backend still needs a private key plus either `client_payload.ssh_target` for dispatch runs or `ACFS_FACTORY_SSH_TARGET` as a fallback.
 
 The target host must be freshly provisioned. By default the harness fails if the `ubuntu` user already exists before install, because the real beginner path must prove ACFS creates that user automatically. The harness also requires `acfs doctor --json` to report zero failures and zero warnings, then separately verifies Agent Mail liveness/systemd service state and the ACFS nightly user timer.
 
