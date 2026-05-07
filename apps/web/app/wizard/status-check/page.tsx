@@ -96,6 +96,8 @@ function getAuthServices(): Record<ServiceCategory, Service[]> {
 
 function getAuthCommandDescription(service: Service): string {
   switch (service.id) {
+    case "github":
+      return "Authenticate GitHub CLI";
     case "tailscale":
       return "Bring Tailscale up and approve this machine";
     case "codex-cli":
@@ -111,6 +113,18 @@ function getAuthCommandDescription(service: Service): string {
     default:
       return `Log in to ${service.name}`;
   }
+}
+
+function getAuthCheckboxLabel(service: Service): string {
+  return service.tier === "essential"
+    ? "Recommended: I logged in to this tool"
+    : "Optional: I logged in to this tool";
+}
+
+function getAuthCompletedLabel(service: Service): string {
+  return service.tier === "essential"
+    ? "Recommended login completed"
+    : "Optional login completed";
 }
 
 export default function StatusCheckPage() {
@@ -418,8 +432,8 @@ export default function StatusCheckPage() {
               the rest later.
             </p>
             <ul className="list-disc space-y-1 pl-5">
-              <li><strong>Recommended now:</strong> Claude Code (so you can start coding immediately)</li>
-              <li><strong>Optional now:</strong> Codex, Gemini (only if you plan to use them)</li>
+              <li><strong>Recommended now:</strong> GitHub CLI and Claude Code (so you can save code and start coding immediately)</li>
+              <li><strong>Optional now:</strong> Codex, Gemini, and Tailscale (only if you plan to use them)</li>
               <li><strong>Optional later:</strong> Cloud tools (Wrangler / Supabase / Vercel) and anything else you don&apos;t need yet</li>
             </ul>
             <p className="text-xs text-muted-foreground">
@@ -433,7 +447,7 @@ export default function StatusCheckPage() {
         </AlertCard>
 
         {/* Auth commands grouped by category */}
-        {(["access", "agent", "cloud"] as const).map((category) => {
+        {(["devtools", "agent", "access", "cloud"] as const).map((category) => {
           const services = authServices[category];
           if (services.length === 0) return null;
 
@@ -455,8 +469,8 @@ export default function StatusCheckPage() {
                     description={getAuthCommandDescription(service)}
                     runLocation="vps"
                     showCheckbox
-                    checkboxLabel="Optional: I logged in to this tool"
-                    completedLabel="Optional login completed"
+                    checkboxLabel={getAuthCheckboxLabel(service)}
+                    completedLabel={getAuthCompletedLabel(service)}
                     persistKey={`auth-${service.id}`}
                   />
                 ))}

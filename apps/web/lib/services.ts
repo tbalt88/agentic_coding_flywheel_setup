@@ -147,7 +147,7 @@ export const SERVICES: Service[] = [
     whyNeeded: 'Third AI option. Uses Gemini 3. Native Google integration. Good for Google Cloud projects.',
     signupUrl: 'https://accounts.google.com/',
     supportsGoogleSso: true, // It IS Google
-    postInstallCommand: 'export GEMINI_API_KEY="your-gemini-api-key"',
+    postInstallCommand: 'mkdir -p ~/.gemini && ${EDITOR:-nano} ~/.gemini/.env',
     installedByAcfs: true,
     docsUrl: 'https://ai.google.dev/',
   },
@@ -168,7 +168,7 @@ export const SERVICES: Service[] = [
     supportsGoogleSso: false, // Email-based, but can link Google email
     alternativeAuth: ['email'],
     postInstallCommand: 'gh auth login',
-    installedByAcfs: false, // Just needs git config
+    installedByAcfs: true,
     docsUrl: 'https://docs.github.com/',
   },
 
@@ -223,7 +223,7 @@ export const SERVICES: Service[] = [
     signupUrl: 'https://dash.cloudflare.com/sign-up',
     supportsGoogleSso: false, // Email-based only
     alternativeAuth: ['email'],
-    postInstallCommand: 'export CLOUDFLARE_API_TOKEN="your-token-here"',
+    postInstallCommand: '${EDITOR:-nano} ~/.zshrc',
     installedByAcfs: true,
     docsUrl: 'https://developers.cloudflare.com/',
   },

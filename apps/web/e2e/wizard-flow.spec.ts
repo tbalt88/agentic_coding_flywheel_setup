@@ -1069,6 +1069,22 @@ test.describe("Step 12: Status Check Page", () => {
     await expect(page.locator('text=/source.*zshrc/i').first()).toBeVisible();
   });
 
+  test("should show GitHub authentication as recommended but non-blocking", async ({ page }) => {
+    await page.goto("/wizard/status-check");
+    await page.waitForLoadState("domcontentloaded");
+
+    const continueButton = page.getByRole("button", { name: /everything looks good/i });
+
+    await expect(page.getByText("Developer Tools")).toBeVisible();
+    await expect(page.getByText("gh auth login")).toBeVisible();
+    await expect(page.getByText(/GitHub CLI and Claude Code/i)).toBeVisible();
+    await expect(page.getByLabel("Recommended: I logged in to this tool").first()).toBeVisible();
+    await expect(continueButton).toBeDisabled();
+
+    await page.locator("#flywheel-doctor").click();
+    await expect(continueButton).toBeEnabled();
+  });
+
   test("should navigate to launch-onboarding on continue", async ({ page }) => {
     await page.goto("/wizard/status-check");
     await page.waitForLoadState("domcontentloaded");
@@ -1156,7 +1172,9 @@ test.describe("Step 13: Launch Onboarding Page", () => {
     })).toBeVisible();
     await expect(page.getByText(/start with claude code/i)).toBeVisible();
     await expect(page.getByText(/codex and gemini can wait/i)).toBeVisible();
+    await expect(page.getByText(/mkdir -p ~\/\.gemini/i)).toBeVisible();
     await expect(page.getByText(/before using ai coding assistants, you need to authenticate them/i)).toHaveCount(0);
+    await expect(page.getByText(/your-gemini-api-key/i)).toHaveCount(0);
   });
 
   test("should redirect to status-check when final-step prerequisites are missing", async ({ page }) => {

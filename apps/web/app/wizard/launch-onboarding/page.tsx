@@ -258,8 +258,8 @@ export default function LaunchOnboardingStep() {
               <div>
                 <p className="font-medium">Gemini CLI (optional)</p>
                 <CommandCard
-                  command='export GEMINI_API_KEY="your-gemini-api-key"'
-                  description="Recommended on a headless VPS. Add the key to ~/.gemini/.env or your shell config, then run gemini."
+                  command="mkdir -p ~/.gemini && ${EDITOR:-nano} ~/.gemini/.env"
+                  description="Recommended on a headless VPS. Add GEMINI_API_KEY to ~/.gemini/.env, then run gemini."
                   runLocation="vps"
                 />
               </div>
