@@ -23,6 +23,10 @@ export interface CommandCardProps {
   description?: string;
   /** Whether to show the "I ran this" checkbox */
   showCheckbox?: boolean;
+  /** Label shown next to an incomplete checkbox */
+  checkboxLabel?: string;
+  /** Label shown after the checkbox is marked complete */
+  completedLabel?: string;
   /** Unique ID for persisting checkbox state in localStorage */
   persistKey?: string;
   /** Callback when checkbox is checked */
@@ -103,6 +107,8 @@ export function CommandCard({
   windowsCommand,
   description,
   showCheckbox = false,
+  checkboxLabel = "I ran this command",
+  completedLabel = "Command completed",
   persistKey,
   onComplete,
   runLocation,
@@ -358,10 +364,10 @@ export function CommandCard({
             {completed ? (
               <>
                 <CheckCircle2 className="h-4 w-4" />
-                <span>Command completed</span>
+                <span>{completedLabel}</span>
               </>
             ) : (
-              <span>I ran this command</span>
+              <span>{checkboxLabel}</span>
             )}
           </label>
         </div>

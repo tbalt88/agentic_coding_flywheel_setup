@@ -1047,11 +1047,18 @@ test.describe("Step 12: Status Check Page", () => {
     await page.goto("/wizard/status-check");
     await page.waitForLoadState("domcontentloaded");
 
-    await expect(page.getByRole("button", { name: /everything looks good/i })).toBeDisabled();
+    const continueButton = page.getByRole("button", { name: /everything looks good/i });
+    const optionalLoginChecks = page.getByLabel("Optional: I logged in to this tool");
+
+    await expect(page.getByText(/only the doctor checkbox is required/i)).toBeVisible();
+    await expect(optionalLoginChecks.first()).toBeVisible();
+    await expect(optionalLoginChecks.first()).not.toBeChecked();
+    await expect(continueButton).toBeDisabled();
     await page.locator("#flywheel-doctor").click();
+    await expect(continueButton).toBeEnabled();
 
     // Click continue
-    await page.click('button:has-text("Everything looks good!")');
+    await continueButton.click();
 
     // Should navigate to step 13 (launch-onboarding)
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/launch-onboarding"));

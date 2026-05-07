@@ -257,13 +257,16 @@ export default function StatusCheckPage() {
       <div className="space-y-4">
         <h2 className="text-xl font-semibold text-foreground">Run the doctor command</h2>
         <p className="text-sm text-muted-foreground">
-          This checks all installed tools and reports any issues:
+          This checks all installed tools and reports any issues. This is the only
+          checkbox required to continue.
         </p>
         <CommandCard
           command="acfs doctor"
           description="Run Agent Flywheel health check"
           runLocation="vps"
           showCheckbox
+          checkboxLabel="I ran acfs doctor"
+          completedLabel="Doctor completed"
           persistKey="flywheel-doctor"
         />
       </div>
@@ -272,7 +275,7 @@ export default function StatusCheckPage() {
       <OutputPreview title="Expected output">
         <div className="space-y-1 font-mono text-xs">
           <p className="text-muted-foreground">Agent Flywheel Doctor - System Health Check</p>
-          <p className="text-muted-foreground">================================</p>
+          <p className="text-muted-foreground">{"=".repeat(32)}</p>
           <p className="text-[oklch(0.72_0.19_145)]">✔ Shell: zsh with oh-my-zsh</p>
           <p className="text-[oklch(0.72_0.19_145)]">✔ Languages: bun, uv, rust, go</p>
           <p className="text-[oklch(0.72_0.19_145)]">✔ Tools: <Jargon term="tmux">tmux</Jargon>, <Jargon term="ripgrep">ripgrep</Jargon>, <Jargon term="lazygit">lazygit</Jargon></p>
@@ -422,6 +425,10 @@ export default function StatusCheckPage() {
             <p className="text-xs text-muted-foreground">
               If you skip a login, the tool is still installed — it just won&apos;t work until you authenticate.
             </p>
+            <p className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              Only the doctor checkbox is required to continue. The login checkboxes below
+              are optional notes for the tools you decide to authenticate now.
+            </p>
           </div>
         </AlertCard>
 
@@ -448,6 +455,8 @@ export default function StatusCheckPage() {
                     description={getAuthCommandDescription(service)}
                     runLocation="vps"
                     showCheckbox
+                    checkboxLabel="Optional: I logged in to this tool"
+                    completedLabel="Optional login completed"
                     persistKey={`auth-${service.id}`}
                   />
                 ))}
