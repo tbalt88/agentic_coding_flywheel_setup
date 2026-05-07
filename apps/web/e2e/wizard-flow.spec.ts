@@ -1147,6 +1147,18 @@ test.describe("Step 13: Launch Onboarding Page", () => {
     await expect(page.locator("h1").first()).toContainText(/congratulations|set up|ready/i);
   });
 
+  test("should present Codex and Gemini authentication as optional follow-up", async ({ page }) => {
+    await page.goto("/wizard/launch-onboarding");
+    await page.waitForLoadState("domcontentloaded");
+
+    await expect(page.getByRole("heading", {
+      name: /authenticate the ai tools you plan to use/i,
+    })).toBeVisible();
+    await expect(page.getByText(/start with claude code/i)).toBeVisible();
+    await expect(page.getByText(/codex and gemini can wait/i)).toBeVisible();
+    await expect(page.getByText(/before using ai coding assistants, you need to authenticate them/i)).toHaveCount(0);
+  });
+
   test("should redirect to status-check when final-step prerequisites are missing", async ({ page }) => {
     await page.goto("/");
     await page.evaluate(() => localStorage.clear());

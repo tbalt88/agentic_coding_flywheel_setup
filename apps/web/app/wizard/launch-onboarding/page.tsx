@@ -205,16 +205,16 @@ export default function LaunchOnboardingStep() {
       {/* Personalized command quick-reference */}
       <CommandBuilderPanel />
 
-      {/* Important: Authenticate Your AI Tools First */}
+      {/* Important: Authenticate the AI tools you plan to use */}
       <Card className="border-[oklch(0.78_0.16_75/0.3)] bg-[oklch(0.78_0.16_75/0.08)] p-6">
         <div className="space-y-4">
           <div className="flex items-center gap-3">
             <Sparkles className="h-6 w-6 text-[oklch(0.78_0.16_75)]" />
-            <h2 className="text-xl font-semibold">First: Authenticate Your AI Tools</h2>
+            <h2 className="text-xl font-semibold">First: Authenticate the AI tools you plan to use</h2>
           </div>
           <p className="text-muted-foreground">
-            <strong className="text-foreground">Before using AI coding assistants, you need to authenticate them.</strong>{" "}
-            This is a one-time setup that links your subscriptions:
+            <strong className="text-foreground">Start with Claude Code so you can begin coding immediately.</strong>{" "}
+            Codex and Gemini can wait until you actually plan to use those accounts.
           </p>
           <div className="space-y-3">
             <div className="flex gap-3">
