@@ -133,13 +133,14 @@ get_error_pattern() {
 
 # Get a suggested fix for an error message
 # Usage: get_suggested_fix "error message text"
-# Returns: Suggested fix text, or generic message if no match
+# Returns: Suggested fix text, or generic message if no match.
+# Use is_known_error() when callers need match/no-match status.
 get_suggested_fix() {
     local error_text="$1"
     local pattern
     local fix
 
-    pattern=$(get_error_pattern "$error_text")
+    pattern=$(get_error_pattern "$error_text" || true)
 
     if [[ -n "$pattern" ]]; then
         fix="${ERROR_PATTERNS[$pattern]}"
@@ -149,7 +150,7 @@ get_suggested_fix() {
 
     # No pattern matched - return generic guidance
     printf "%b\n" "Unknown error. Troubleshooting steps:\n  1. Check internet connectivity: curl -I https://google.com\n  2. Verify disk space: df -h\n  3. Check system logs: journalctl -xe\n  4. Search the error message online\n  5. Report at: https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/issues"
-    return 1
+    return 0
 }
 
 # Check if an error matches any known pattern
@@ -172,7 +173,7 @@ format_error_with_fix() {
     local suggested_fix
     local pattern
 
-    pattern=$(get_error_pattern "$error_text")
+    pattern=$(get_error_pattern "$error_text" || true)
     suggested_fix=$(get_suggested_fix "$error_text")
 
     echo "=========================================="

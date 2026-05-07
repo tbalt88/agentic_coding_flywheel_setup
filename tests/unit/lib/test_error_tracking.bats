@@ -99,6 +99,34 @@ EOF
     assert_output "trusted bash used"
 }
 
+@test "errors: unmatched suggestions survive errexit" {
+    run env -i PATH="/usr/bin:/bin" /usr/bin/bash -c '
+        set -euo pipefail
+        source "$1"
+        get_suggested_fix "totally unmatched failure"
+        printf "after\n"
+    ' _ "$PROJECT_ROOT/scripts/lib/errors.sh"
+
+    assert_success
+    assert_output --partial "Unknown error. Troubleshooting steps:"
+    assert_output --partial "Check internet connectivity"
+    assert_output --partial "after"
+}
+
+@test "errors: formatted unmatched errors survive errexit" {
+    run env -i PATH="/usr/bin:/bin" /usr/bin/bash -c '
+        set -euo pipefail
+        source "$1"
+        format_error_with_fix "totally unmatched failure" "stack"
+        printf "after\n"
+    ' _ "$PROJECT_ROOT/scripts/lib/errors.sh"
+
+    assert_success
+    assert_output --partial "ERROR during phase: stack"
+    assert_output --partial "Unknown error. Troubleshooting steps:"
+    assert_output --partial "after"
+}
+
 @test "report_failure renders generic unknown fix once" {
     local report_log
     report_log="$BATS_TEST_TMPDIR/report.log"
