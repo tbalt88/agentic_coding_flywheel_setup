@@ -348,6 +348,21 @@ result=$(redact_and_read "generated_password_log.txt" "WARN: Generated password 
 assert_contains "Generated ACFS password redacted" "$result" "Generated password for 'ubuntu': <REDACTED:password>"
 assert_not_contains "Generated ACFS password value removed" "$result" "abcdefghijklmnopqrstuvwxyz123456"
 
+result=$(redact_and_read "openssh_private_key_log.txt" $'before\n-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAA\n-----END OPENSSH PRIVATE KEY-----\nafter')
+assert_contains "OpenSSH private key block redacted" "$result" "<REDACTED:private_key>"
+assert_not_contains "OpenSSH private key header removed" "$result" "BEGIN OPENSSH PRIVATE KEY"
+assert_not_contains "OpenSSH private key payload removed" "$result" "b3BlbnNzaC1rZXktdjE"
+assert_contains "Text after private key preserved" "$result" "after"
+
+result=$(redact_and_read "pgp_private_key_log.txt" $'-----BEGIN PGP PRIVATE KEY BLOCK-----\nprivate-payload-line\n-----END PGP PRIVATE KEY BLOCK-----')
+assert_contains "PGP private key block redacted" "$result" "<REDACTED:private_key>"
+assert_not_contains "PGP private key payload removed" "$result" "private-payload-line"
+
+result=$(redact_and_read "truncated_private_key_log.txt" $'before\n-----BEGIN RSA PRIVATE KEY-----\ntruncated-private-payload')
+assert_contains "Truncated private key block redacted" "$result" "<REDACTED:private_key>"
+assert_not_contains "Truncated private key header removed" "$result" "BEGIN RSA PRIVATE KEY"
+assert_not_contains "Truncated private key payload removed" "$result" "truncated-private-payload"
+
 # ============================================================
 # Tests: Safe values NOT redacted (false positive prevention)
 # ============================================================
@@ -409,20 +424,24 @@ mkdir -p "$TEST_DIR/bundle/logs"
 printf 'token=sk-abcdefghijklmnopqrstuvwxyz1234567890\n' > "$TEST_DIR/bundle/state.json"
 printf '%s\n' "{\"message\":\"Generated password for 'ubuntu': abcdefghijklmnopqrstuvwxyz123456\"}" > "$TEST_DIR/bundle/events.jsonl"
 printf 'log: ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmn\n' > "$TEST_DIR/bundle/logs/install.log"
+printf '%s\n' "-----BEGIN PRIVATE KEY-----" "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=" "-----END PRIVATE KEY-----" > "$TEST_DIR/bundle/logs/private-key.log"
 printf 'safe content no secrets here\n' > "$TEST_DIR/bundle/clean.txt"
 redact_bundle "$TEST_DIR/bundle"
 
 state_content=$(cat "$TEST_DIR/bundle/state.json")
 jsonl_content=$(cat "$TEST_DIR/bundle/events.jsonl")
 log_content=$(cat "$TEST_DIR/bundle/logs/install.log")
+private_key_content=$(cat "$TEST_DIR/bundle/logs/private-key.log")
 assert_contains "Bundle: state.json redacted" "$state_content" "<REDACTED:api_key>"
 assert_contains "Bundle: events.jsonl redacted" "$jsonl_content" "<REDACTED:password>"
 assert_not_contains "Bundle: events.jsonl password removed" "$jsonl_content" "abcdefghijklmnopqrstuvwxyz123456"
 assert_contains "Bundle: install.log redacted" "$log_content" "<REDACTED:github_token>"
-if [[ "$REDACTION_COUNT" -ge 3 ]]; then
-    pass "Bundle: redaction count >= 3"
+assert_contains "Bundle: private key redacted" "$private_key_content" "<REDACTED:private_key>"
+assert_not_contains "Bundle: private key payload removed" "$private_key_content" "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo="
+if [[ "$REDACTION_COUNT" -ge 4 ]]; then
+    pass "Bundle: redaction count >= 4"
 else
-    fail "Bundle: redaction count >= 3" "Got $REDACTION_COUNT"
+    fail "Bundle: redaction count >= 4" "Got $REDACTION_COUNT"
 fi
 
 # ============================================================

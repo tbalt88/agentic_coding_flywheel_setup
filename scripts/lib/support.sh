@@ -1105,7 +1105,7 @@ write_manifest() {
             redaction: {
                 enabled: $redaction_enabled,
                 files_modified: $redaction_files_modified,
-                patterns: ["api_key", "aws_key", "github_token", "github_pat", "vault_token", "slack_token", "bearer", "jwt", "password", "generic_secret"]
+                patterns: ["api_key", "aws_key", "github_token", "github_pat", "vault_token", "slack_token", "bearer", "jwt", "password", "private_key", "generic_secret"]
             }
         }' > "$manifest_file" 2>/dev/null || return 1
 }
@@ -1113,6 +1113,42 @@ write_manifest() {
 # ============================================================
 # Redaction
 # ============================================================
+
+# Collapse PEM/OpenSSH/PGP-style private key blocks in-place. These are
+# multiline secrets, so the single-line sed expressions below cannot catch them.
+redact_private_key_blocks() {
+    local file="$1"
+    local tmp_file=""
+
+    tmp_file=$(mktemp "${file}.redacted.XXXXXX") || return 0
+    if awk '
+        /^[[:space:]]*-----BEGIN [^-]*PRIVATE KEY[^-]*-----[[:space:]]*$/ {
+            if (!in_private_key) {
+                print "<REDACTED:private_key>"
+            }
+            in_private_key = 1
+            next
+        }
+        in_private_key && /^[[:space:]]*-----END [^-]*PRIVATE KEY[^-]*-----[[:space:]]*$/ {
+            in_private_key = 0
+            next
+        }
+        in_private_key {
+            next
+        }
+        {
+            print
+        }
+    ' "$file" > "$tmp_file" 2>/dev/null; then
+        if ! cmp -s "$file" "$tmp_file" 2>/dev/null; then
+            mv "$tmp_file" "$file" 2>/dev/null || rm -f "$tmp_file"
+        else
+            rm -f "$tmp_file"
+        fi
+    else
+        rm -f "$tmp_file"
+    fi
+}
 
 # Redact sensitive values from a single text file in-place.
 # Increments REDACTION_COUNT once when the file content changes.
@@ -1129,6 +1165,8 @@ redact_file() {
     # Count lines before redaction for diff
     local before_hash
     before_hash=$(md5sum "$file" 2>/dev/null | awk '{print $1}') || return 0
+
+    redact_private_key_blocks "$file"
 
     # Apply redaction patterns using sed -E (extended regex)
     # Order: specific patterns first, then generic catch-alls

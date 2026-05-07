@@ -47,6 +47,9 @@ gho_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmn
 PASSWORD=supersecretpassword123
 Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U
 AKIAIOSFODNN7EXAMPLE
+-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAA
+-----END OPENSSH PRIVATE KEY-----
 hostname=myserver.example.com
 git_sha=a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0
 LOG
@@ -211,6 +214,12 @@ test_manifest_json_valid() {
         harness_pass "Manifest lists redaction patterns ($pattern_count)"
     else
         harness_fail "Manifest lists redaction patterns" "Expected >=5, got $pattern_count"
+    fi
+
+    if jq -e '.redaction.patterns | index("private_key")' "$manifest" >/dev/null 2>&1; then
+        harness_pass "Manifest lists private_key redaction pattern"
+    else
+        harness_fail "Manifest lists private_key redaction pattern"
     fi
 
     local schema_version
@@ -468,6 +477,18 @@ test_redaction_catches_secrets() {
         harness_pass "JWT redacted"
     fi
 
+    if echo "$log_content" | grep -q 'b3BlbnNzaC1rZXktdjE'; then
+        harness_fail "Private key block redacted" "Found raw private key payload in bundle"
+    else
+        harness_pass "Private key block redacted"
+    fi
+
+    if echo "$log_content" | grep -q 'BEGIN OPENSSH PRIVATE KEY'; then
+        harness_fail "Private key header redacted" "Found raw private key header in bundle"
+    else
+        harness_pass "Private key header redacted"
+    fi
+
     # Redaction markers MUST be present
     if echo "$log_content" | grep -q '<REDACTED:'; then
         harness_pass "Redaction markers present in output"
@@ -589,22 +610,19 @@ test_sudo_user_defaults_to_target_acfs_home() {
     mkdir -p "$root_home" "$target_home" "$target_acfs"
 
     cp -R "$MOCK_ACFS/." "$target_acfs/"
+    cat > "$target_acfs/state.json" <<JSON
+{
+  "target_user": "acfstarget",
+  "target_home": "$target_home",
+  "completed_phases": ["base_packages", "shell_setup"]
+}
+JSON
     echo "# root zshrc" > "$root_home/.zshrc"
     echo "# target zshrc" > "$target_home/.zshrc"
 
     local archive_path=""
-    archive_path=$(TARGET_TEST_HOME="$target_home" HOME="$root_home" SUDO_USER="acfstarget" SUPPORT_BUNDLE_DOCTOR_TIMEOUT=5 \
-        bash -c '
-            getent() {
-                if [[ "$1" == "passwd" && "$2" == "acfstarget" ]]; then
-                    printf "acfstarget:x:1000:1000::%s:/bin/bash\n" "$TARGET_TEST_HOME"
-                    return 0
-                fi
-                return 2
-            }
-            export -f getent
-            bash "'"$SUPPORT_SH"'"
-        ' 2>/dev/null) || true
+    archive_path=$(HOME="$root_home" SUDO_USER="acfstarget" ACFS_SYSTEM_STATE_FILE="$target_acfs/state.json" SUPPORT_BUNDLE_DOCTOR_TIMEOUT=5 \
+        bash "$SUPPORT_SH" 2>/dev/null) || true
 
     if [[ "$archive_path" == "$target_acfs"/support/* ]] && [[ -f "$archive_path" ]]; then
         harness_pass "SUDO_USER support bundle defaults to target ACFS home"

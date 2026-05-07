@@ -3934,6 +3934,7 @@ By default, sensitive data is automatically redacted:
 | Bearer tokens | `Bearer xxx...` | `Bearer <REDACTED:bearer>` |
 | JWTs | `eyJhbGc...` | `<REDACTED:jwt>` |
 | Passwords | `"password": "..."` | `"password": "<REDACTED:password>"` |
+| Private key blocks | `-----BEGIN ... PRIVATE KEY-----` | `<REDACTED:private_key>` |
 
 **Example workflow:**
 
