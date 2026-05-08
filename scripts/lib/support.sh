@@ -1605,6 +1605,172 @@ write_manifest() {
         }' > "$manifest_file" 2>/dev/null || return 1
 }
 
+support_report_markdown_link() {
+    local bundle_dir="$1"
+    local relative_path="$2"
+
+    [[ -f "$bundle_dir/$relative_path" ]] || return 1
+    printf '[%s](%s)' "$relative_path" "$relative_path"
+}
+
+support_report_json_status() {
+    local bundle_dir="$1"
+    local relative_path="$2"
+    local jq_bin="$3"
+    local file_path="$bundle_dir/$relative_path"
+
+    [[ -f "$file_path" ]] || {
+        printf 'missing\n'
+        return 0
+    }
+    [[ -n "$jq_bin" ]] || {
+        printf 'present\n'
+        return 0
+    }
+    "$jq_bin" . "$file_path" >/dev/null 2>&1 || {
+        printf 'malformed\n'
+        return 0
+    }
+    "$jq_bin" -r '.status // .summary.status // .capture.status // "present"' "$file_path" 2>/dev/null || printf 'present\n'
+}
+
+support_report_sensitive_field_findings() {
+    local bundle_dir="$1"
+    local jq_bin="$2"
+    local file_path=""
+    local relative_path=""
+    local findings=""
+    local sensitive_keys=""
+
+    [[ -n "$jq_bin" ]] || return 0
+
+    while IFS= read -r file_path; do
+        [[ -f "$file_path" ]] || continue
+        "$jq_bin" . "$file_path" >/dev/null 2>&1 || continue
+        relative_path="${file_path#"$bundle_dir"/}"
+        sensitive_keys="$("$jq_bin" -r '
+            paths as $p
+            | select(($p | length) > 0)
+            | ($p[-1] // empty)
+            | select(type == "string")
+            | select(test("(hostname|(^|_)ip($|_)|address|ssh_key|private_key|token|password|credential|provider_api_key|project_path|(^|_)home($|_))"; "i"))
+        ' "$file_path" 2>/dev/null | sort -u | paste -sd, - || true)"
+        [[ -n "$sensitive_keys" ]] || continue
+        findings+="- ${relative_path}: sensitive-looking field names detected (${sensitive_keys}); values are not summarized."$'\n'
+    done < <(find "$bundle_dir" -maxdepth 4 -type f \( -name '*.json' -o -name '*.yaml' -o -name '*.yml' \) 2>/dev/null | sort)
+
+    printf '%s' "$findings"
+}
+
+support_report_write_link_line() {
+    local bundle_dir="$1"
+    local relative_path="$2"
+    local label="$3"
+    local status="$4"
+    local report_file="$5"
+    local link=""
+
+    link="$(support_report_markdown_link "$bundle_dir" "$relative_path" 2>/dev/null || true)"
+    [[ -n "$link" ]] || return 0
+    printf '| %s | %s | %s |\n' "$label" "$link" "$status" >> "$report_file"
+}
+
+# Write a small redacted Markdown index for the support bundle.
+# Usage: write_support_report_index <bundle_dir>
+write_support_report_index() {
+    local bundle_dir="$1"
+    local report_file="$bundle_dir/support-report.md"
+    local jq_bin=""
+    local generated_at=""
+    local redaction_enabled="true"
+    local redaction_files_modified="$REDACTION_COUNT"
+    local sensitive_findings=""
+    local file=""
+    local relative_path=""
+    local status=""
+
+    jq_bin="$(support_system_binary_path jq 2>/dev/null || true)"
+    generated_at="$(date -Iseconds 2>/dev/null || date)"
+
+    if [[ -n "$jq_bin" && -f "$bundle_dir/manifest.json" ]] && "$jq_bin" . "$bundle_dir/manifest.json" >/dev/null 2>&1; then
+        redaction_enabled="$("$jq_bin" -r '.redaction.enabled // true' "$bundle_dir/manifest.json" 2>/dev/null || printf 'true')"
+        redaction_files_modified="$("$jq_bin" -r '.redaction.files_modified // 0' "$bundle_dir/manifest.json" 2>/dev/null || printf '0')"
+    fi
+
+    sensitive_findings="$(support_report_sensitive_field_findings "$bundle_dir" "$jq_bin")"
+
+    {
+        printf '# ACFS Support Bundle Report\n\n'
+        printf 'Generated: %s\n\n' "$generated_at"
+        printf 'This report is a redacted index. It links only files present in this bundle and does not include raw command output, local paths, hostnames, message bodies, tokens, passwords, or private keys.\n\n'
+
+        printf '## Start Here\n\n'
+        printf '| Item | Link | Status |\n'
+        printf '| --- | --- | --- |\n'
+    } > "$report_file" || return 1
+
+    status="$(support_report_json_status "$bundle_dir" "manifest.json" "$jq_bin")"
+    support_report_write_link_line "$bundle_dir" "manifest.json" "Manifest" "$status" "$report_file"
+    status="$(support_report_json_status "$bundle_dir" "doctor.json" "$jq_bin")"
+    support_report_write_link_line "$bundle_dir" "doctor.json" "Doctor" "$status" "$report_file"
+    status="$(support_report_json_status "$bundle_dir" "swarm_status.json" "$jq_bin")"
+    support_report_write_link_line "$bundle_dir" "swarm_status.json" "Swarm status" "$status" "$report_file"
+    status="$(support_report_json_status "$bundle_dir" "swarm_timeline.json" "$jq_bin")"
+    support_report_write_link_line "$bundle_dir" "swarm_timeline.json" "Swarm timeline" "$status" "$report_file"
+    status="$(support_report_json_status "$bundle_dir" "provenance.json" "$jq_bin")"
+    support_report_write_link_line "$bundle_dir" "provenance.json" "Tool provenance" "$status" "$report_file"
+    status="$(support_report_json_status "$bundle_dir" "resource_profile.json" "$jq_bin")"
+    support_report_write_link_line "$bundle_dir" "resource_profile.json" "Resource profile" "$status" "$report_file"
+    status="$(support_report_json_status "$bundle_dir" "versions.json" "$jq_bin")"
+    support_report_write_link_line "$bundle_dir" "versions.json" "Versions" "$status" "$report_file"
+    status="$(support_report_json_status "$bundle_dir" "environment.json" "$jq_bin")"
+    support_report_write_link_line "$bundle_dir" "environment.json" "Environment" "$status" "$report_file"
+
+    {
+        printf '\n## Redaction\n\n'
+        printf '%s\n' "- Redaction enabled: \`$redaction_enabled\`"
+        printf '%s\n' "- Files modified by redaction: \`$redaction_files_modified\`"
+        printf '%s\n\n' "- Raw Agent Mail bodies, terminal history, tmux panes, command output snippets, local project paths, and secret values are intentionally not summarized here."
+    } >> "$report_file" || return 1
+
+    if [[ -n "$sensitive_findings" ]]; then
+        {
+            printf '## Sensitive Field Review\n\n'
+            printf 'Sensitive-looking field names were found. The report fails closed by listing field names only and not summarizing values from those files.\n\n'
+            printf '%s\n' "$sensitive_findings"
+        } >> "$report_file" || return 1
+    fi
+
+    {
+        printf '## Simulation And Rehearsal Artifacts\n\n'
+        printf '| Artifact | Link |\n'
+        printf '| --- | --- |\n'
+    } >> "$report_file" || return 1
+
+    while IFS= read -r file; do
+        relative_path="${file#"$bundle_dir"/}"
+        case "$relative_path" in
+            summary.json|scenario_*/summary.json|scenario_*/mock_rehearsal.json|scenario_*/plan.json|scenario_*/telemetry.json|scenario_*/capacity.json|scenario_*/resource.json)
+                printf '| %s | [%s](%s) |\n' "$relative_path" "$relative_path" "$relative_path" >> "$report_file" || return 1
+                ;;
+        esac
+    done < <(find "$bundle_dir" -maxdepth 3 -type f -name '*.json' 2>/dev/null | sort)
+
+    {
+        printf '\n## All Bundle Files\n\n'
+        printf '| File |\n'
+        printf '| --- |\n'
+    } >> "$report_file" || return 1
+
+    for relative_path in "${BUNDLE_FILES[@]:-}"; do
+        [[ "$relative_path" == "support-report.md" ]] && continue
+        [[ -f "$bundle_dir/$relative_path" ]] || continue
+        printf '| [%s](%s) |\n' "$relative_path" "$relative_path" >> "$report_file" || return 1
+    done
+
+    record_bundle_file "support-report.md"
+}
+
 # ============================================================
 # Redaction
 # ============================================================
@@ -1880,6 +2046,9 @@ main() {
 
     # --- Write manifest ---
     log_detail "Writing manifest..."
+    write_manifest "$bundle_dir"
+    log_detail "Writing support report..."
+    write_support_report_index "$bundle_dir" || true
     write_manifest "$bundle_dir"
 
     # --- Create tar archive ---
