@@ -993,6 +993,7 @@ print_acfs_help() {
     echo "    --deep            Run functional tests (auth, connections)"
     echo "  info [options]      Quick system overview (terminal/json/html)"
     echo "  status [options]    Quick one-line health summary"
+    echo "  capacity [options]  Estimate safe/recommended agent counts"
     echo "  cheatsheet          Command reference (aliases, shortcuts)"
     echo "  changelog [options] Show recent project changes"
     echo "  export-config       Export config for backup/migration"
