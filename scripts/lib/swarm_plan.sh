@@ -216,6 +216,11 @@ $status as $s
 | ($s.probes.rch // {}) as $rch
 | ($s.probes.ntm // {}) as $ntm
 | ($s.host // {}) as $host
+| (n($host.cpu_count)) as $host_cpu_count
+| (n($host.load_1m)) as $host_load_1m
+| (n($host.mem_available_kb)) as $host_mem_available_kb
+| (if n($host.cpu_count) > 0 then (n($host.load_1m) / n($host.cpu_count)) else 0 end) as $host_load_ratio
+| (($host_cpu_count > 0 and $host_load_ratio >= 1.25) or ($host_mem_available_kb > 0 and $host_mem_available_kb < 4194304)) as $host_pressure_high
 | (n($c.capacity.recommended_agent_count)) as $capacity_recommended
 | (n($c.capacity.safe_agent_count)) as $capacity_safe
 | (if $capacity_safe > 0 then $capacity_safe else n($c.capacity.max_agent_count) end) as $safe_from_capacity
@@ -228,6 +233,7 @@ $status as $s
 | (n($rch.workers_offline)) as $rch_workers_offline
 | (n($rch.pressure_warning_count)) as $rch_pressure_warning_count
 | (n($rch.stale_worker_count)) as $rch_stale_worker_count
+| (n($beads.stale_in_progress_count) + n($beads.stale_work_count) + n($beads.stale_count) + n($s.stale_work.total_stale_count) + n($s.stale_work.stale_count)) as $stale_work_count
 | (
     if (b($rch.available) | not) then "fail"
     elif (b($rch.status_json_ok) | not) then "fail"
@@ -261,6 +267,19 @@ $status as $s
        else "Requested count is within the capacity recommendation" end);
       ($c.recommendations // []);
       ["acfs capacity --json --profile " + ($requested_agents | tostring) + "-agents --recommend-ntm"]
+    ),
+    check(
+      "host_pressure";
+      (if $host_pressure_high then "warn" else "pass" end);
+      (if ($host_cpu_count > 0 and $host_load_ratio >= 1.25 and $host_mem_available_kb > 0 and $host_mem_available_kb < 4194304) then "Host load and available memory are already under pressure"
+       elif ($host_cpu_count > 0 and $host_load_ratio >= 1.25) then "Host load is already high; pause new launches until pressure clears"
+       elif ($host_mem_available_kb > 0 and $host_mem_available_kb < 4194304) then "Available memory is below the conservative launch threshold"
+       else "Host pressure is acceptable" end);
+      ([
+        if ($host_cpu_count > 0 and $host_load_ratio >= 1.25) then "load_1m=" + ($host_load_1m | tostring) + " cpu_count=" + ($host_cpu_count | tostring) else empty end,
+        if ($host_mem_available_kb > 0 and $host_mem_available_kb < 4194304) then "mem_available_kb=" + ($host_mem_available_kb | tostring) else empty end
+      ]);
+      ["acfs swarm status --json", "acfs capacity --json --recommend-ntm"]
     ),
     check(
       "rch_pressure";
@@ -306,10 +325,12 @@ $status as $s
     ),
     check(
       "active_work";
-      (if n($beads.in_progress_count) > 0 then "warn" else "pass" end);
-      (if n($beads.in_progress_count) > 0 then "There is active in-progress Beads work; inspect before adding agents" else "No in-progress Beads work reported" end);
-      [];
-      ["br list --status in_progress --json", "acfs swarm status --json"]
+      (if $stale_work_count > 0 or n($beads.in_progress_count) > 0 then "warn" else "pass" end);
+      (if $stale_work_count > 0 then "Stale in-progress work requires verification before adding agents"
+       elif n($beads.in_progress_count) > 0 then "There is active in-progress Beads work; inspect before adding agents"
+       else "No in-progress Beads work reported" end);
+      (if $stale_work_count > 0 then ["stale_work_count=" + ($stale_work_count | tostring)] else [] end);
+      ["br list --status in_progress --json", "acfs swarm status --json", "acfs swarm doctor --stale-hours 12"]
     ),
     check(
       "active_sessions";
@@ -330,6 +351,16 @@ $status as $s
    else $requested_agents end) as $launch_agents
 | (if ($launch_agents // 0) > 0 then agent_mix($launch_agents; $profile) else null end) as $mix
 | ([$checks[] | select(.status != "pass") | .summary] | unique) as $warnings
+| (if ($plan_status == "fail" or $host_pressure_high or $stale_work_count > 0) then "wait"
+   elif ($requested_agents > $recommended_agents or $plan_status == "warn") then "scale_down"
+   else "proceed" end) as $quiesce_recommendation
+| (if $quiesce_recommendation == "wait" then
+     ([$checks[] | select(.status == "fail" or .id == "host_pressure" or (.id == "active_work" and $stale_work_count > 0)) | select(.status != "pass") | .summary] | unique)
+   elif $quiesce_recommendation == "scale_down" then
+     ([$checks[] | select(.status == "warn") | .summary] | unique)
+   else
+     ["No load-shedding pressure detected"]
+   end) as $quiesce_reasons
 | {
     schema_version: 1,
     generated_at: (now | todateiso8601),
@@ -346,6 +377,19 @@ $status as $s
        elif $requested_agents > $recommended_agents then "Reduce to " + ($recommended_agents | tostring) + " agents or wait for pressure to clear."
        elif $plan_status == "warn" then "Launch only after reviewing warnings."
        else "Launch is reasonable." end),
+    quiesce_advisory: {
+      recommendation: $quiesce_recommendation,
+      action:
+        (if $quiesce_recommendation == "wait" then "Wait before launching new agents; inspect the listed pressure or stale-work reasons."
+         elif $quiesce_recommendation == "scale_down" then "Scale down to " + ($recommended_agents | tostring) + " agents or wait for pressure to clear."
+         else "Proceed with the requested launch size." end),
+      recommended_agents:
+        (if $quiesce_recommendation == "proceed" then $requested_agents
+         elif $quiesce_recommendation == "scale_down" and $recommended_agents > 0 then $recommended_agents
+         else null end),
+      reasons: $quiesce_reasons,
+      does_not: ["kill sessions", "delete files", "release reservations", "mutate Beads"]
+    },
     inputs: {
       swarm_status_file: (if $status_file == "" then null else $status_file end),
       capacity_profile: (($requested_agents | tostring) + "-agents"),
@@ -427,6 +471,13 @@ swarm_plan_jq_error_report() {
                 }
             ],
             launch_profile: {recommended: false, not_executed: true, agent_count: null, label: null, mix: null, command: null},
+            quiesce_advisory: {
+                recommendation: "wait",
+                action: $message,
+                recommended_agents: null,
+                reasons: [$message],
+                does_not: ["kill sessions", "delete files", "release reservations", "mutate Beads"]
+            },
             warnings: [$message],
             next_commands: ["acfs swarm status --json", "acfs capacity --json --recommend-ntm"],
             examples: []
@@ -488,6 +539,7 @@ swarm_plan_emit_human() {
     echo "Profile: $("${jq_bin}" -r '.profile // "unknown"' <<<"$report")"
     echo "Recommendation: $("${jq_bin}" -r '.recommendation' <<<"$report")"
     echo "Action: $("${jq_bin}" -r '.recommended_action' <<<"$report")"
+    echo "Quiesce: $("${jq_bin}" -r '.quiesce_advisory.recommendation // "wait"' <<<"$report") - $("${jq_bin}" -r '.quiesce_advisory.action // "Inspect status before launching."' <<<"$report")"
 
     launch_command="$("${jq_bin}" -r '.launch_profile.command // ""' <<<"$report")"
     if [[ -n "$launch_command" ]]; then

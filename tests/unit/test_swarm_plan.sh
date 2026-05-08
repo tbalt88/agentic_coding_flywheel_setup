@@ -108,6 +108,57 @@ missing_agent_mail_status_fixture() {
 JSON
 }
 
+high_load_status_fixture() {
+    write_fixture high_load_status <<'JSON'
+{
+  "schema_version": 1,
+  "status": "warn",
+  "host": {"status": "warn", "cpu_count": 16, "load_1m": 24, "mem_available_kb": 67108864, "disk_available_kb": 157286400, "warnings": ["host load is high"]},
+  "probes": {
+    "agent_mail": {"status": "pass", "available": true, "healthy": true, "warnings": []},
+    "beads": {"status": "pass", "available": true, "ready_count": 5, "in_progress_count": 0, "open_count": 12, "warnings": []},
+    "bv": {"status": "pass", "available": true, "robot_ok": true, "warnings": []},
+    "rch": {"status": "pass", "available": true, "status_json_ok": true, "queue_json_ok": true, "queue_depth": 0, "active_build_count": 0, "workers_total": 8, "workers_healthy": 8, "workers_busy": 0, "workers_offline": 0, "slots_total": 32, "slots_available": 20, "pressure_warning_count": 0, "stale_worker_count": 0, "warnings": []},
+    "ntm": {"status": "pass", "available": true, "robot_status_ok": true, "tmux_available": true, "tmux_session_count": 1, "tmux_window_count": 4, "warnings": []}
+  }
+}
+JSON
+}
+
+low_memory_status_fixture() {
+    write_fixture low_memory_status <<'JSON'
+{
+  "schema_version": 1,
+  "status": "warn",
+  "host": {"status": "warn", "cpu_count": 32, "load_1m": 4, "mem_available_kb": 2097152, "disk_available_kb": 157286400, "warnings": ["available memory is low"]},
+  "probes": {
+    "agent_mail": {"status": "pass", "available": true, "healthy": true, "warnings": []},
+    "beads": {"status": "pass", "available": true, "ready_count": 5, "in_progress_count": 0, "open_count": 12, "warnings": []},
+    "bv": {"status": "pass", "available": true, "robot_ok": true, "warnings": []},
+    "rch": {"status": "pass", "available": true, "status_json_ok": true, "queue_json_ok": true, "queue_depth": 0, "active_build_count": 0, "workers_total": 8, "workers_healthy": 8, "workers_busy": 0, "workers_offline": 0, "slots_total": 32, "slots_available": 20, "pressure_warning_count": 0, "stale_worker_count": 0, "warnings": []},
+    "ntm": {"status": "pass", "available": true, "robot_status_ok": true, "tmux_available": true, "tmux_session_count": 1, "tmux_window_count": 4, "warnings": []}
+  }
+}
+JSON
+}
+
+stale_work_status_fixture() {
+    write_fixture stale_work_status <<'JSON'
+{
+  "schema_version": 1,
+  "status": "warn",
+  "host": {"status": "pass", "cpu_count": 32, "load_1m": 4, "mem_available_kb": 67108864, "disk_available_kb": 157286400, "warnings": []},
+  "probes": {
+    "agent_mail": {"status": "pass", "available": true, "healthy": true, "warnings": []},
+    "beads": {"status": "pass", "available": true, "ready_count": 5, "in_progress_count": 2, "stale_in_progress_count": 1, "open_count": 12, "warnings": []},
+    "bv": {"status": "pass", "available": true, "robot_ok": true, "warnings": []},
+    "rch": {"status": "pass", "available": true, "status_json_ok": true, "queue_json_ok": true, "queue_depth": 0, "active_build_count": 0, "workers_total": 8, "workers_healthy": 8, "workers_busy": 0, "workers_offline": 0, "slots_total": 32, "slots_available": 20, "pressure_warning_count": 0, "stale_worker_count": 0, "warnings": []},
+    "ntm": {"status": "pass", "available": true, "robot_status_ok": true, "tmux_available": true, "tmux_session_count": 1, "tmux_window_count": 4, "warnings": []}
+  }
+}
+JSON
+}
+
 capacity_script_with_safe_count() {
     local safe="$1"
     local recommended="$2"
@@ -154,6 +205,8 @@ test_healthy_ten_agents_passes_with_launch_command() {
       .launch_profile.recommended == true and
       .launch_profile.agent_count == 10 and
       (.launch_profile.command | startswith("ntm spawn myproject")) and
+      .quiesce_advisory.recommendation == "proceed" and
+      .quiesce_advisory.recommended_agents == 10 and
       .safety.read_only == true and
       .safety.launches_agents == false
     ' <<<"$output" >/dev/null || return 1
@@ -175,6 +228,8 @@ test_busy_rch_warns_and_scales_down() {
       .status == "warn" and
       .recommendation == "defer_or_reduce" and
       .recommended_agents == 4 and
+      .quiesce_advisory.recommendation == "scale_down" and
+      .quiesce_advisory.recommended_agents == 4 and
       .launch_profile.agent_count == 4 and
       (.checks[] | select(.id == "rch_pressure" and .status == "warn")) and
       (.checks[] | select(.id == "active_work" and .status == "warn")) and
@@ -197,6 +252,7 @@ test_low_capacity_blocks_large_profile() {
     jq -e '
       .status == "fail" and
       .recommendation == "block" and
+      .quiesce_advisory.recommendation == "wait" and
       .launch_profile.recommended == false and
       .launch_profile.command == null and
       (.checks[] | select(.id == "host_capacity" and .status == "fail")) and
@@ -218,6 +274,7 @@ test_missing_agent_mail_blocks_launch_command() {
     [[ "$status" -eq 2 ]] || return 1
     jq -e '
       .status == "fail" and
+      .quiesce_advisory.recommendation == "wait" and
       .launch_profile.command == null and
       (.checks[] | select(.id == "coordination_health" and .status == "fail")) and
       (.next_commands[] | select(. == "mcp-agent-mail doctor check --json")) and
@@ -225,6 +282,66 @@ test_missing_agent_mail_blocks_launch_command() {
     ' <<<"$output" >/dev/null || return 1
 
     pass "missing_agent_mail_blocks_launch_command"
+}
+
+test_high_load_quiesce_waits() {
+    local fixture output status
+    fixture="$(high_load_status_fixture)"
+    ACFS_TEST_CAPACITY_SCRIPT="$(capacity_script_with_safe_count 32 24 pass "Requested count is within the recommended tier")"
+    export ACFS_TEST_CAPACITY_SCRIPT
+
+    output="$(run_plan_json high_load "$fixture" --agents 10 --profile balanced --workload standard)"
+    status="$(cat "$ARTIFACT_DIR/high_load.exit")"
+
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '
+      .status == "warn" and
+      .quiesce_advisory.recommendation == "wait" and
+      (.checks[] | select(.id == "host_pressure" and .status == "warn")) and
+      (.quiesce_advisory.reasons[] | contains("Host load"))
+    ' <<<"$output" >/dev/null || return 1
+
+    pass "high_load_quiesce_waits"
+}
+
+test_low_memory_quiesce_waits() {
+    local fixture output status
+    fixture="$(low_memory_status_fixture)"
+    ACFS_TEST_CAPACITY_SCRIPT="$(capacity_script_with_safe_count 32 24 pass "Requested count is within the recommended tier")"
+    export ACFS_TEST_CAPACITY_SCRIPT
+
+    output="$(run_plan_json low_memory "$fixture" --agents 10 --profile balanced --workload standard)"
+    status="$(cat "$ARTIFACT_DIR/low_memory.exit")"
+
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '
+      .status == "warn" and
+      .quiesce_advisory.recommendation == "wait" and
+      (.checks[] | select(.id == "host_pressure" and .status == "warn")) and
+      (.quiesce_advisory.reasons[] | contains("Available memory"))
+    ' <<<"$output" >/dev/null || return 1
+
+    pass "low_memory_quiesce_waits"
+}
+
+test_stale_work_quiesce_waits() {
+    local fixture output status
+    fixture="$(stale_work_status_fixture)"
+    ACFS_TEST_CAPACITY_SCRIPT="$(capacity_script_with_safe_count 32 24 pass "Requested count is within the recommended tier")"
+    export ACFS_TEST_CAPACITY_SCRIPT
+
+    output="$(run_plan_json stale_work "$fixture" --agents 10 --profile balanced --workload standard)"
+    status="$(cat "$ARTIFACT_DIR/stale_work.exit")"
+
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '
+      .status == "warn" and
+      .quiesce_advisory.recommendation == "wait" and
+      (.checks[] | select(.id == "active_work" and .status == "warn" and (.details[] | contains("stale_work_count=1")))) and
+      (.next_commands[] | select(. == "acfs swarm doctor --stale-hours 12"))
+    ' <<<"$output" >/dev/null || return 1
+
+    pass "stale_work_quiesce_waits"
 }
 
 test_status_file_replay_ignores_live_status_script() {
@@ -266,6 +383,9 @@ main() {
     run_test test_busy_rch_warns_and_scales_down
     run_test test_low_capacity_blocks_large_profile
     run_test test_missing_agent_mail_blocks_launch_command
+    run_test test_high_load_quiesce_waits
+    run_test test_low_memory_quiesce_waits
+    run_test test_stale_work_quiesce_waits
     run_test test_status_file_replay_ignores_live_status_script
 
     echo "Results: $TESTS_PASSED passed, $TESTS_FAILED failed"

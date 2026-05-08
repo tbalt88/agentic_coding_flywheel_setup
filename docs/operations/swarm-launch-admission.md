@@ -93,6 +93,13 @@ The planner should emit one JSON object:
   "workload": "standard",
   "recommendation": "defer_or_reduce",
   "recommended_action": "Reduce to 18 agents or wait for RCH pressure to clear",
+  "quiesce_advisory": {
+    "recommendation": "scale_down",
+    "action": "Scale down to 18 agents or wait for pressure to clear.",
+    "recommended_agents": 18,
+    "reasons": ["RCH queue already has pending work"],
+    "does_not": ["kill sessions", "delete files", "release reservations", "mutate Beads"]
+  },
   "inputs": {
     "swarm_status_file": null,
     "capacity_file": null,
@@ -117,8 +124,30 @@ Required top-level fields:
 | `workload` | string | `light`, `standard`, or `heavy`. |
 | `recommendation` | string | `launch`, `launch_with_review`, `defer_or_reduce`, or `block`. |
 | `recommended_action` | string | Human-readable next step. |
+| `quiesce_advisory` | object | Read-only load-shedding stoplight, documented below. |
 | `checks` | array | Deterministic check objects, documented below. |
 | `examples` | array | Plans for 10, 25, and 50 agents. |
+
+## Load-Shedding Advisory
+
+`quiesce_advisory` is the operator-facing stoplight for whether to add more
+agents right now. It is part of `acfs swarm plan`, not a competing command. It
+does not kill sessions, delete files, release reservations, mutate Beads, or
+start cleanup. It only explains whether the launch should proceed, be scaled
+down, or wait.
+
+Recommendations:
+
+| Recommendation | Meaning |
+| --- | --- |
+| `proceed` | No load-shedding pressure was detected; the requested size is reasonable. |
+| `scale_down` | Launching may be reasonable at the reduced `recommended_agents` count. |
+| `wait` | Do not add agents until pressure, hard blockers, or stale work are inspected. |
+
+`wait` is used for hard blockers, high host load, very low available memory, or
+stale in-progress work. `scale_down` is used for warnings such as RCH queue
+pressure, active non-stale work, or counts above the pressure-adjusted
+recommendation.
 
 ## Check Objects
 
@@ -150,6 +179,7 @@ Required checks:
 | Check | Pass | Warn | Fail |
 | --- | --- | --- | --- |
 | `host_capacity` | Requested count is at or below capacity recommendation. | Requested count is above recommendation but at or below safe count. | Requested count is above safe count or safe count is zero. |
+| `host_pressure` | Host load and available memory are within conservative launch thresholds. | Host load is high or available memory is below the conservative threshold. | Never fails directly; the quiesce advisory returns `wait` instead. |
 | `rch_pressure` | RCH unavailable only when workload is light, or queue/worker pressure is clear. | RCH has a queue, busy workers, stale telemetry, or pressure warnings but enough slots remain. | RCH is required for the workload and unavailable, invalid, or has no available slots. |
 | `coordination_health` | Agent Mail, Beads, and bv probes are healthy. | Optional coordination probes degrade but Beads and bv remain usable. | Beads or bv JSON commands are unavailable for swarm planning. |
 | `active_work` | No in-progress Beads and no stale reservations reported. | In-progress Beads exist or stale reservations are suspected. | A requested launch would overlap active exclusive reservations without operator review. |
@@ -168,8 +198,15 @@ The first implementation should use conservative thresholds:
 - If `probes.rch.stale_worker_count > 0`, return at least `warn`.
 - If `probes.rch.slots_available == 0` and workload is `standard` or `heavy`,
   return `fail`.
+- If `host.load_1m / host.cpu_count >= 1.25`, return at least `warn` and set
+  `quiesce_advisory.recommendation` to `wait`.
+- If `host.mem_available_kb` is present and below 4 GiB, return at least `warn`
+  and set `quiesce_advisory.recommendation` to `wait`.
 - If `probes.beads.in_progress_count > 0`, return at least `warn` and include
   `br list --status in_progress --json` as a next command.
+- If stale in-progress work is reported by status/doctor data, return at least
+  `warn`, include `acfs swarm doctor --stale-hours 12`, and set
+  `quiesce_advisory.recommendation` to `wait`.
 - If Agent Mail reservation pressure is unavailable, return `warn`, not `fail`,
   unless Beads or bv are also unavailable.
 - If requested agents exceed `safe_agents`, return `fail`.
@@ -194,6 +231,7 @@ RCH: queue=4 active=2 workers=7/7 busy=2 slots=64/82 pressure=2 stale=0
 Beads: ready=12 in_progress=1
 NTM/tmux: sessions=2 windows=8
 Recommendation: Reduce to 18 agents or wait for RCH pressure to clear
+Quiesce: scale_down - Scale down to 18 agents or wait for pressure to clear.
 
 Warnings:
   - RCH has queued work and elevated worker pressure.
