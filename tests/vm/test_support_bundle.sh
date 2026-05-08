@@ -63,6 +63,30 @@ LOG
 }
 JSON
 
+    # Create mock performance budget JSON
+    cat > "$MOCK_ACFS/logs/performance_budget_20260126_220000.json" <<'JSON'
+{
+  "schema_version": 1,
+  "status": "pass",
+  "secret_key": "budget_secret_value_here_1234",
+  "budgets": [
+    {
+      "name": "total_install_duration",
+      "actual_seconds": 57,
+      "budget_seconds": 3600,
+      "status": "pass"
+    }
+  ],
+  "artifacts": [
+    {
+      "kind": "source_summary",
+      "path": "install_summary_20260126_220000.json",
+      "redacted": true
+    }
+  ]
+}
+JSON
+
     # Create mock .zshrc
     echo "# mock zshrc" > "$MOCK_HOME/.zshrc"
 
@@ -154,6 +178,12 @@ test_bundle_contains_expected_files() {
         harness_pass "Bundle contains manifest.json"
     else
         harness_fail "Bundle contains manifest.json"
+    fi
+
+    if echo "$contents" | grep -q 'performance_budget_20260126_220000.json'; then
+        harness_pass "Bundle contains performance budget JSON"
+    else
+        harness_fail "Bundle contains performance budget JSON"
     fi
 
     if echo "$contents" | grep -q 'versions.json'; then
@@ -261,6 +291,10 @@ test_manifest_lists_each_summary_once() {
     local summary_count
     summary_count=$(jq '[.files[] | select(. == "logs/install_summary_20260126_220000.json")] | length' "$manifest" 2>/dev/null || echo 0)
     harness_assert_eq "1" "$summary_count" "Manifest lists each install summary once"
+
+    local budget_count
+    budget_count=$(jq '[.files[] | select(. == "logs/performance_budget_20260126_220000.json")] | length' "$manifest" 2>/dev/null || echo 0)
+    harness_assert_eq "1" "$budget_count" "Manifest lists each performance budget once"
 
     rm -rf "$extract_dir"
     cleanup_mock_env
@@ -527,6 +561,27 @@ test_redaction_catches_secrets() {
             harness_pass "Hostname preserved in summary JSON"
         else
             harness_fail "Hostname preserved in summary JSON"
+        fi
+    fi
+
+    # Check performance budget JSON too
+    local budget_file
+    budget_file=$(find "$extract_dir" -name 'performance_budget_*.json' -type f 2>/dev/null | head -1)
+
+    if [[ -n "$budget_file" ]]; then
+        local budget_content
+        budget_content=$(cat "$budget_file")
+
+        if echo "$budget_content" | grep -q 'budget_secret_value'; then
+            harness_fail "Generic secret_key redacted in performance budget JSON" "Found raw secret_key"
+        else
+            harness_pass "Generic secret_key redacted in performance budget JSON"
+        fi
+
+        if echo "$budget_content" | grep -q 'total_install_duration'; then
+            harness_pass "Budget metric name preserved in performance budget JSON"
+        else
+            harness_fail "Budget metric name preserved in performance budget JSON"
         fi
     fi
 

@@ -1326,6 +1326,13 @@ main() {
         done < <(find "$logs_dir" -type f -name 'install_summary_*.json' 2>/dev/null | sort -r | head -5)
     fi
 
+    # --- Collect performance budget JSONs ---
+    if [[ -d "$logs_dir" ]]; then
+        while IFS= read -r budget; do
+            collect_file "$budget" "$bundle_dir" "logs/$(basename "$budget")" "$(basename "$budget")" || true
+        done < <(find "$logs_dir" -type f -name 'performance_budget_*.json' 2>/dev/null | sort -r | head -5)
+    fi
+
     # --- Capture doctor JSON ---
     log_detail "Running health checks..."
     capture_doctor_json "$bundle_dir" || true
