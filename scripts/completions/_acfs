@@ -81,6 +81,15 @@ _acfs() {
                         '-h[Show help message]' \
                         '--help[Show help message]'
                     ;;
+                provisioning-packet|provider-packet)
+                    _arguments \
+                        '--json[Emit machine-readable validation JSON]' \
+                        '--markdown[Emit human-readable validation output]' \
+                        '--file[Provider provisioning packet JSON file]:file:_files' \
+                        '--packet[Provider provisioning packet JSON file]:file:_files' \
+                        '-h[Show help message]' \
+                        '--help[Show help message]'
+                    ;;
                 swarm)
                     _arguments -C \
                         '1: :_acfs_swarm_commands' \
@@ -432,6 +441,8 @@ _acfs_commands() {
         'swarm_calibration:Artifact-backed capacity calibration report'
         'swarm-inventory:Local host inventory report/import/export/validate'
         'swarm_inventory:Local host inventory report/import/export/validate'
+        'provisioning-packet:Validate/render provider provisioning packet JSON'
+        'provider-packet:Validate/render provider packet JSON'
         'coordinate:Coordination preflight helpers'
         'coord:Coordination helpers (alias for coordinate)'
         'cheatsheet:Command reference (aliases, shortcuts)'

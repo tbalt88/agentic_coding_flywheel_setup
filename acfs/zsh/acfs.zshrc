@@ -401,6 +401,17 @@ acfs() {
         return 1
       fi
       ;;
+    provisioning-packet|provider-packet)
+      if [[ -f "$acfs_home/scripts/lib/provisioning_packet.sh" ]]; then
+        bash "$acfs_home/scripts/lib/provisioning_packet.sh" "$@"
+      elif [[ -x "$acfs_bin" ]]; then
+        "$acfs_bin" provisioning-packet "$@"
+      else
+        echo "Error: provisioning_packet.sh not found"
+        echo "Re-run the ACFS installer to get the latest scripts"
+        return 1
+      fi
+      ;;
     landing-plane|land|closeout)
       if [[ -f "$acfs_home/scripts/lib/landing_plane.sh" ]]; then
         bash "$acfs_home/scripts/lib/landing_plane.sh" "$@"
@@ -481,6 +492,7 @@ acfs() {
       echo "  status          Quick one-line health summary (fast, no network)"
       echo "  session         List/export/import agent sessions (cass)"
       echo "  support-bundle  Collect diagnostic data for troubleshooting"
+      echo "  provisioning-packet Validate/render provider packet JSON"
       echo "  landing-plane   Closeout checklist for gates, Beads, Mail, and reservations"
       echo "  provenance      Installed-tool provenance ledger for diagnostics"
       echo "  changelog       Show recent changes (--all, --since 7d, --json)"

@@ -281,6 +281,27 @@ true:
 Failures should include deterministic verification command ids and artifact ids
 rather than raw provider errors that may contain private account details.
 
+## CLI Validator
+
+`acfs provisioning-packet --file <packet.json>` validates a packet without
+contacting a provider API. It renders human-readable output by default and
+emits machine-readable checks with `--json`.
+
+The validator checks:
+
+- schema id and version
+- required provider, region, OS, access, install, compatibility, verification,
+  and artifact fields
+- support-safe redaction flags and forbidden sensitive fields
+- provider readiness, Ubuntu image readiness, username format, SSH private-key
+  exclusion, and install command/source-ref coherence
+- secret-looking scalar values, including raw private keys, common API tokens,
+  and raw IPv4 addresses
+
+Unknown providers are valid but return a warning so support can continue with
+manual verification. Unsupported readiness or redaction failures return a failed
+check.
+
 ## Test Plan
 
 The v1 schema bead adds focused web-unit coverage for:
@@ -294,5 +315,7 @@ The v1 schema bead adds focused web-unit coverage for:
 - expected artifact ids and redaction requirements
 - manual remaining steps for each current wizard provider
 
-Future implementation beads should add fixture tests for actual packet
-generation and support-bundle projection once those commands exist.
+The CLI validator bead adds Bash fixture coverage for valid packets, malformed
+JSON, redaction refusal, unknown providers, unsupported OS choices, and stable
+human/JSON output. Future implementation beads should add support-bundle
+projection coverage once that projection exists.

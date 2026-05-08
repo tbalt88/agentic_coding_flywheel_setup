@@ -1006,6 +1006,7 @@ print_acfs_help() {
     echo "  swarm convergence   Epic success-criteria convergence audit"
     echo "  swarm calibration   Artifact-backed capacity calibration report"
     echo "  swarm inventory     Local host inventory report/import/export/validate"
+    echo "  provisioning-packet Validate/render provider provisioning packet JSON"
     echo "  coordinate doctor   Alias for swarm doctor"
     echo "  cheatsheet          Command reference (aliases, shortcuts)"
     echo "  changelog [options] Show recent project changes"
@@ -4658,6 +4659,18 @@ main() {
             fi
 
             echo "Error: support.sh not found" >&2
+            return 1
+            ;;
+        provisioning-packet|provider-packet)
+            shift
+            local provisioning_packet_script=""
+            provisioning_packet_script="$(_acfs_doctor_find_lib_script "provisioning_packet.sh" 2>/dev/null || true)"
+
+            if [[ -n "$provisioning_packet_script" ]]; then
+                _acfs_doctor_exec_bash_script "$provisioning_packet_script" "$@"
+            fi
+
+            echo "Error: provisioning_packet.sh not found" >&2
             return 1
             ;;
         version|-v|--version)
