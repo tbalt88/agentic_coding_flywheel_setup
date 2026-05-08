@@ -496,6 +496,7 @@ _acfs_doctor_source_first() {
 
 # Source output formatting library (for TOON support)
 _acfs_doctor_source_first "output.sh" || true
+_acfs_doctor_source_first "progress.sh" || true
 
 if ! type -t log_error >/dev/null 2>&1; then
     log_step() { echo "[*] $*" >&2; }
@@ -4776,6 +4777,8 @@ main() {
                 ;;
         esac
     done
+
+    local_progress_record_doctor_invoked "$DEEP_MODE" "$FIX_MODE" "$DRY_RUN_MODE" "$JSON_MODE" 2>/dev/null || true
 
     if [[ "$JSON_MODE" != "true" ]]; then
         local os_pretty="unknown"

@@ -833,6 +833,20 @@ for candidate in \
     fi
 done
 
+if [[ -z "${ACFS_LOCAL_PROGRESS_FILE:-}" && -n "$_ONBOARD_ACFS_HOME" ]]; then
+    ACFS_LOCAL_PROGRESS_FILE="$_ONBOARD_ACFS_HOME/local_progress.json"
+fi
+for candidate in \
+    "$_ONBOARD_SCRIPT_DIR/../scripts/lib/progress.sh" \
+    "$_ONBOARD_SCRIPT_DIR/../../scripts/lib/progress.sh" \
+    "$_ONBOARD_ACFS_HOME/scripts/lib/progress.sh"; do
+    if [[ -f "$candidate" ]]; then
+        # shellcheck disable=SC1090,SC1091
+        source "$candidate" 2>/dev/null || true
+        break
+    fi
+done
+
 # Dynamic lesson discovery
 # Finds all *.md files in LESSONS_DIR, sorted by filename
 # Extracts titles from the first "# Title" line in each file
@@ -1615,6 +1629,9 @@ mark_completed() {
 
         # Release lock
         { exec {lock_fd}>&-; } 2>/dev/null || true
+        local lesson_number
+        lesson_number="$(get_lesson_number "$lesson" 2>/dev/null || printf '%d' "$((10#$lesson + 1))")"
+        local_progress_record_onboard_lesson "completed" "$lesson" "$lesson_number" 2>/dev/null || true
         return 0
     fi
 
@@ -1640,6 +1657,9 @@ mark_completed() {
     fi
 
     { exec {lock_fd}>&-; } 2>/dev/null || true
+    local lesson_number
+    lesson_number="$(get_lesson_number "$lesson" 2>/dev/null || printf '%d' "$((10#$lesson + 1))")"
+    local_progress_record_onboard_lesson "completed" "$lesson" "$lesson_number" 2>/dev/null || true
     return 0
 }
 
@@ -1771,6 +1791,7 @@ EOF
 
     # Release lock
     { exec {lock_fd}>&-; } 2>/dev/null || true
+    local_progress_record_onboard_event "progress_reset" "reset" 0 "$NUM_LESSONS" 2>/dev/null || true
     echo -e "${GREEN}Progress reset!${NC}"
     return 0
 }
@@ -2548,6 +2569,7 @@ show_celebration() {
 show_completion_certificate() {
     local completed_at
     completed_at=$(date '+%Y-%m-%d %H:%M')
+    local_progress_record_onboard_event "tutorial_completed" "completed" "$NUM_LESSONS" "$NUM_LESSONS" 2>/dev/null || true
 
     clear 2>/dev/null || true
 
@@ -2620,6 +2642,8 @@ show_lesson() {
         echo "Please ensure ACFS is properly installed."
         return 1
     fi
+
+    local_progress_record_onboard_lesson "started" "$idx" "$lesson_number" 2>/dev/null || true
 
     clear 2>/dev/null || true
 
@@ -2802,6 +2826,7 @@ show_status() {
             ((completed_count += 1))
         fi
     done
+    local_progress_record_onboard_event "status_invoked" "observed" "$completed_count" "$NUM_LESSONS" 2>/dev/null || true
 
     if (( NUM_LESSONS == 0 )); then
         show_no_lessons_notice
@@ -2993,6 +3018,7 @@ onboard_main() {
         idx="$(get_lesson_index_by_number "$((10#$arg))" || true)"
         if [[ -n "$idx" ]]; then
             init_progress
+            local_progress_record_onboard_event "session_started" "started" "" "$NUM_LESSONS" 2>/dev/null || true
             if ! set_current "$idx"; then
                 return 1
             fi
@@ -3078,11 +3104,14 @@ fi)
 Environment:
   ACFS_LESSONS_DIR   Path to lesson files (default: $LESSONS_DIR)
   ACFS_PROGRESS_FILE Path to progress file (default: $PROGRESS_FILE)
+  ACFS_LOCAL_PROGRESS=off disables local milestone recording
+  ACFS_LOCAL_PROGRESS_FILE overrides the milestone file path
 EOF
             return 0
             ;;
         "")
             init_progress
+            local_progress_record_onboard_event "session_started" "started" "" "$NUM_LESSONS" 2>/dev/null || true
             main_menu
             return $?
             ;;

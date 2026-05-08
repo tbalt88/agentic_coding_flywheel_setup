@@ -22,6 +22,12 @@ if [[ -n "${_ACFS_STATE_SH_LOADED:-}" ]]; then
 fi
 _ACFS_STATE_SH_LOADED=1
 
+_ACFS_STATE_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if ! type -t local_progress_record_installer_phase >/dev/null 2>&1 && [[ -f "$_ACFS_STATE_SCRIPT_DIR/progress.sh" ]]; then
+    # shellcheck source=progress.sh
+    source "$_ACFS_STATE_SCRIPT_DIR/progress.sh" 2>/dev/null || true
+fi
+
 # ============================================================
 # Color Constants - respect NO_COLOR standard (https://no-color.org/)
 # Related: bd-39ye
@@ -2796,6 +2802,7 @@ run_phase() {
 
     # Record phase start
     state_phase_start "$phase_id" "Starting $human_name"
+    local_progress_record_installer_phase "$phase_id" "started" 2>/dev/null || true
 
     # Execute the phase function
     _run_phase_log_start "$display_name"
@@ -2814,12 +2821,14 @@ run_phase() {
     if [[ $exit_code -eq 0 ]]; then
         # Success - mark phase as completed
         state_phase_complete "$phase_id"
+        local_progress_record_installer_phase "$phase_id" "completed" 2>/dev/null || true
         _run_phase_log_success "$display_name" "$duration"
         return 0
     else
         # Failure - record failure state
         local error_msg="Phase '$human_name' failed with exit code $exit_code"
         state_phase_fail "$phase_id" "Execution failed" "$error_msg"
+        local_progress_record_installer_phase "$phase_id" "failed" 2>/dev/null || true
         _run_phase_log_failure "$display_name" "$exit_code"
         return 1
     fi

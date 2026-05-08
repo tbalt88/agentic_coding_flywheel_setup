@@ -243,6 +243,11 @@ if ! declare -f log_step >/dev/null 2>&1; then
     log_error()   { echo "[ERR] $*" >&2; }
 fi
 
+if [[ -f "$_SUPPORT_SCRIPT_DIR/progress.sh" ]]; then
+    # shellcheck source=progress.sh
+    source "$_SUPPORT_SCRIPT_DIR/progress.sh" 2>/dev/null || true
+fi
+
 # ============================================================
 # Configuration
 # ============================================================
@@ -1108,6 +1113,340 @@ collect_file() {
         [[ "$VERBOSE" == "true" ]] && log_detail "Not found: $display"
         return 1
     fi
+}
+
+support_json_file_status() {
+    local file_path="$1"
+    local jq_bin="$2"
+
+    [[ -f "$file_path" ]] || {
+        printf 'missing\n'
+        return 0
+    }
+    [[ -s "$file_path" ]] || {
+        printf 'empty\n'
+        return 0
+    }
+    "$jq_bin" . "$file_path" >/dev/null 2>&1 || {
+        printf 'malformed\n'
+        return 0
+    }
+    printf 'present\n'
+}
+
+support_local_progress_milestones_summary_json() {
+    local jq_bin="$1"
+    local progress_file="$2"
+    local opt_out="$3"
+    local file_status=""
+
+    if [[ "$opt_out" == "true" ]]; then
+        "$jq_bin" -n '{
+            status: "skipped",
+            source_status: "opt_out",
+            reason: "local milestone recording is disabled by environment",
+            event_count: 0,
+            latest_event: null,
+            sources: {},
+            statuses: {}
+        }'
+        return 0
+    fi
+
+    file_status="$(support_json_file_status "$progress_file" "$jq_bin")"
+    case "$file_status" in
+        missing|empty)
+            "$jq_bin" -n --arg source_status "$file_status" '{
+                status: "empty",
+                source_status: $source_status,
+                event_count: 0,
+                latest_event: null,
+                sources: {},
+                statuses: {}
+            }'
+            return 0
+            ;;
+        malformed)
+            "$jq_bin" -n '{
+                status: "warn",
+                source_status: "malformed",
+                reason: "local progress JSON is malformed; raw content intentionally not summarized",
+                event_count: 0,
+                latest_event: null,
+                sources: {},
+                statuses: {}
+            }'
+            return 0
+            ;;
+    esac
+
+    "$jq_bin" '
+      def safe_token:
+        if type == "string" and test("^[A-Za-z0-9_.:-]{1,80}$") then . else "unknown" end;
+      def safe_time:
+        if type == "string" and test("^[0-9T:Z+_. -]{1,40}$") then . else null end;
+      def detail_string($k):
+        (.details[$k] // null) | if type == "string" and test("^[A-Za-z0-9_.:-]{1,80}$") then . else null end;
+      def detail_number($k):
+        (.details[$k] // null) | if type == "number" and . >= 0 then . else null end;
+      def detail_bool($k):
+        (.details[$k] // null) | if type == "boolean" then . else null end;
+      def safe_details:
+        {
+          phase_id: detail_string("phase_id"),
+          lesson_index: detail_number("lesson_index"),
+          lesson_number: detail_number("lesson_number"),
+          completed_count: detail_number("completed_count"),
+          total_lessons: detail_number("total_lessons"),
+          deep_mode: detail_bool("deep_mode"),
+          fix_mode: detail_bool("fix_mode"),
+          dry_run_mode: detail_bool("dry_run_mode"),
+          json_mode: detail_bool("json_mode")
+        } | with_entries(select(.value != null));
+      def safe_event:
+        {
+          timestamp: (.timestamp | safe_time),
+          source: (.source | safe_token),
+          kind: (.kind | safe_token),
+          status: (.status | safe_token),
+          details: safe_details
+        };
+      ((.events // []) | map(select(type == "object"))) as $events
+      | ($events | map(.source | safe_token) | sort | group_by(.) | map({key: .[0], value: length}) | from_entries) as $sources
+      | ($events | map(.status | safe_token) | sort | group_by(.) | map({key: .[0], value: length}) | from_entries) as $statuses
+      | {
+          status: (if ($events | length) > 0 then "pass" else "empty" end),
+          source_status: "present",
+          event_count: ($events | length),
+          first_event_at: (if ($events | length) > 0 then ($events[0].timestamp | safe_time) else null end),
+          latest_event_at: (if ($events | length) > 0 then ($events[-1].timestamp | safe_time) else null end),
+          latest_event: (if ($events | length) > 0 then ($events[-1] | safe_event) else null end),
+          sources: $sources,
+          statuses: $statuses
+        }
+    ' "$progress_file" 2>/dev/null || "$jq_bin" -n '{
+        status: "warn",
+        source_status: "summary_failed",
+        event_count: 0,
+        latest_event: null,
+        sources: {},
+        statuses: {}
+    }'
+}
+
+support_onboard_progress_summary_json() {
+    local jq_bin="$1"
+    local progress_file="$2"
+    local file_status=""
+
+    file_status="$(support_json_file_status "$progress_file" "$jq_bin")"
+    case "$file_status" in
+        missing|empty)
+            "$jq_bin" -n --arg source_status "$file_status" '{
+                status: "empty",
+                source_status: $source_status,
+                completed_count: 0,
+                current_lesson_index: null,
+                started_at: null,
+                last_accessed: null
+            }'
+            return 0
+            ;;
+        malformed)
+            "$jq_bin" -n '{
+                status: "warn",
+                source_status: "malformed",
+                reason: "onboard progress JSON is malformed; raw content intentionally not summarized",
+                completed_count: 0,
+                current_lesson_index: null,
+                started_at: null,
+                last_accessed: null
+            }'
+            return 0
+            ;;
+    esac
+
+    "$jq_bin" '
+      def safe_time:
+        if type == "string" and test("^[0-9T:Z+_. -]{1,40}$") then . else null end;
+      def safe_index:
+        if type == "number" and . >= 0 and . == floor then . else null end;
+      {
+        status: "pass",
+        source_status: "present",
+        completed_count: ((.completed // []) | map(select(type == "number" and . >= 0 and . == floor)) | unique | length),
+        current_lesson_index: (.current | safe_index),
+        started_at: (.started_at | safe_time),
+        last_accessed: (.last_accessed | safe_time)
+      }
+    ' "$progress_file" 2>/dev/null || "$jq_bin" -n '{
+        status: "warn",
+        source_status: "summary_failed",
+        completed_count: 0,
+        current_lesson_index: null,
+        started_at: null,
+        last_accessed: null
+    }'
+}
+
+support_installer_progress_summary_json() {
+    local jq_bin="$1"
+    local state_file="$2"
+    local file_status=""
+
+    file_status="$(support_json_file_status "$state_file" "$jq_bin")"
+    case "$file_status" in
+        missing|empty)
+            "$jq_bin" -n --arg source_status "$file_status" '{
+                status: "empty",
+                source_status: $source_status,
+                completed_phase_count: 0,
+                skipped_phase_count: 0,
+                current_phase: null,
+                failed_phase: null,
+                failed_step_present: false,
+                failed_error_present: false
+            }'
+            return 0
+            ;;
+        malformed)
+            "$jq_bin" -n '{
+                status: "warn",
+                source_status: "malformed",
+                reason: "installer state JSON is malformed; raw content intentionally not summarized",
+                completed_phase_count: 0,
+                skipped_phase_count: 0,
+                current_phase: null,
+                failed_phase: null,
+                failed_step_present: false,
+                failed_error_present: false
+            }'
+            return 0
+            ;;
+    esac
+
+    "$jq_bin" '
+      def safe_token:
+        if type == "string" and test("^[A-Za-z0-9_.:-]{1,80}$") then . else null end;
+      {
+        status: "pass",
+        source_status: "present",
+        completed_phase_count: ((.completed_phases // []) | map(select(type == "string")) | length),
+        skipped_phase_count: ((.skipped_phases // []) | map(select(type == "string")) | length),
+        current_phase: (.current_phase | safe_token),
+        failed_phase: (.failed_phase | safe_token),
+        failed_step_present: ((.failed_step // null) != null),
+        failed_error_present: ((.failed_error // null) != null)
+      }
+    ' "$state_file" 2>/dev/null || "$jq_bin" -n '{
+        status: "warn",
+        source_status: "summary_failed",
+        completed_phase_count: 0,
+        skipped_phase_count: 0,
+        current_phase: null,
+        failed_phase: null,
+        failed_step_present: false,
+        failed_error_present: false
+    }'
+}
+
+# Capture a redacted local progress summary without copying raw milestone files.
+# Usage: capture_local_progress_json <bundle_dir>
+capture_local_progress_json() {
+    local bundle_dir="$1"
+    local jq_bin=""
+    local output_file="$bundle_dir/local_progress.json"
+    local progress_file=""
+    local onboard_file=""
+    local state_file=""
+    local opt_out=false
+    local milestones_json=""
+    local onboard_json=""
+    local installer_json=""
+
+    jq_bin="$(support_system_binary_path jq 2>/dev/null || true)"
+    if [[ -z "$jq_bin" ]]; then
+        cat > "$output_file" <<'JSON'
+{"schema_version":1,"status":"warn","reason":"jq is required to render local progress diagnostics","redaction":{"raw_values_collected":false,"raw_paths_collected":false,"paths_redacted":true}}
+JSON
+        record_bundle_file "local_progress.json"
+        return 0
+    fi
+
+    if type -t local_progress_is_disabled >/dev/null 2>&1 && local_progress_is_disabled; then
+        opt_out=true
+    fi
+
+    progress_file="${ACFS_LOCAL_PROGRESS_FILE:-${_SUPPORT_ACFS_HOME:+$_SUPPORT_ACFS_HOME/local_progress.json}}"
+    onboard_file="${_SUPPORT_ACFS_HOME:+$_SUPPORT_ACFS_HOME/onboard_progress.json}"
+    state_file="${_SUPPORT_ACFS_HOME:+$_SUPPORT_ACFS_HOME/state.json}"
+
+    milestones_json="$(support_local_progress_milestones_summary_json "$jq_bin" "$progress_file" "$opt_out")"
+    onboard_json="$(support_onboard_progress_summary_json "$jq_bin" "$onboard_file")"
+    installer_json="$(support_installer_progress_summary_json "$jq_bin" "$state_file")"
+
+    "$jq_bin" -n \
+        --argjson milestones "$milestones_json" \
+        --argjson onboard "$onboard_json" \
+        --argjson installer "$installer_json" \
+        'def degraded($x): ($x.status == "warn");
+         def emptyish($x): ($x.status == "empty");
+         def skipped($x): ($x.status == "skipped");
+         {
+           schema_version: 1,
+           status: (
+             if degraded($milestones) or degraded($onboard) or degraded($installer) then "warn"
+             elif skipped($milestones) then "skipped"
+             elif emptyish($milestones) and emptyish($onboard) and emptyish($installer) then "empty"
+             else "pass" end
+           ),
+           summary: {
+             milestone_event_count: ($milestones.event_count // 0),
+             onboard_completed_count: ($onboard.completed_count // 0),
+             installer_completed_phase_count: ($installer.completed_phase_count // 0),
+             latest_event_at: ($milestones.latest_event_at // null)
+           },
+           stuck_hint: (
+             if ($installer.failed_phase // null) != null then
+               {source: "installer", status: "failed", phase_id: $installer.failed_phase, next_action: "acfs rescue --json or acfs support-bundle"}
+             elif ($milestones.latest_event // null) != null then
+               {
+                 source: $milestones.latest_event.source,
+                 status: $milestones.latest_event.status,
+                 kind: $milestones.latest_event.kind,
+                 details: $milestones.latest_event.details,
+                 next_action: "continue from the latest local milestone"
+               }
+             elif ($installer.current_phase // null) != null then
+               {source: "installer", status: "in_progress", phase_id: $installer.current_phase, next_action: "acfs status --json"}
+             elif ($onboard.current_lesson_index // null) != null then
+               {source: "onboard", status: "in_progress", lesson_index: $onboard.current_lesson_index, next_action: "onboard status"}
+             else
+               {source: null, status: "empty", next_action: "acfs doctor --json"}
+             end
+           ),
+           redaction: {
+             raw_values_collected: false,
+             raw_paths_collected: false,
+             paths_redacted: true,
+             secrets_collected: false,
+             local_paths_collected: false,
+             command_history_collected: false,
+             keystrokes_collected: false,
+             network_submission: false,
+             sanitized_records_only: true
+           },
+           milestones: $milestones,
+           onboard_progress: $onboard,
+           installer_state: $installer
+         }' > "$output_file" 2>/dev/null || {
+        cat > "$output_file" <<'JSON'
+{"schema_version":1,"status":"warn","reason":"local progress summary rendering failed","redaction":{"raw_values_collected":false,"raw_paths_collected":false,"paths_redacted":true}}
+JSON
+    }
+
+    record_bundle_file "local_progress.json"
+    return 0
 }
 
 # Capture doctor JSON output.
@@ -2007,6 +2346,7 @@ write_manifest() {
     local swarm_timeline_manifest=""
     local provenance_manifest=""
     local resource_profile_manifest=""
+    local local_progress_manifest=""
     local swarm_inventory_manifest=""
     local versions_manifest=""
     local environment_manifest=""
@@ -2015,6 +2355,7 @@ write_manifest() {
     swarm_timeline_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "swarm_timeline.json" "swarm_timeline" '["agent_mail_bodies","terminal_history","tmux_panes","command_output","local_paths"]' "$jq_bin")"
     provenance_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "provenance.json" "provenance" '["tool_versions","install_sources","local_paths"]' "$jq_bin")"
     resource_profile_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "resource_profile.json" "resource_profile" '["local_paths","wrapper_commands","secret_values"]' "$jq_bin")"
+    local_progress_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "local_progress.json" "local_progress" '["local_milestones","wizard_steps","installer_phase_ids","onboard_lesson_numbers"]' "$jq_bin")"
     swarm_inventory_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "swarm_inventory.json" "swarm_inventory" '["hostnames","ip_addresses","ssh_users","ssh_key_paths","provider_ids","repo_paths","home_paths","token_like_notes"]' "$jq_bin")"
     versions_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "versions.json" "versions" '["tool_versions"]' "$jq_bin")"
     environment_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "environment.json" "environment" '["hostnames","home_paths","local_paths"]' "$jq_bin")"
@@ -2034,6 +2375,7 @@ write_manifest() {
         --argjson swarm_timeline_manifest "$swarm_timeline_manifest" \
         --argjson provenance_manifest "$provenance_manifest" \
         --argjson resource_profile_manifest "$resource_profile_manifest" \
+        --argjson local_progress_manifest "$local_progress_manifest" \
         --argjson swarm_inventory_manifest "$swarm_inventory_manifest" \
         --argjson versions_manifest "$versions_manifest" \
         --argjson environment_manifest "$environment_manifest" \
@@ -2056,6 +2398,7 @@ write_manifest() {
                 swarm_timeline: $swarm_timeline_manifest,
                 provenance: $provenance_manifest,
                 resource_profile: $resource_profile_manifest,
+                local_progress: $local_progress_manifest,
                 swarm_inventory: $swarm_inventory_manifest,
                 versions: $versions_manifest,
                 environment: $environment_manifest
@@ -2179,6 +2522,8 @@ write_support_report_index() {
     support_report_write_link_line "$bundle_dir" "provenance.json" "Tool provenance" "$status" "$report_file"
     status="$(support_report_json_status "$bundle_dir" "resource_profile.json" "$jq_bin")"
     support_report_write_link_line "$bundle_dir" "resource_profile.json" "Resource profile" "$status" "$report_file"
+    status="$(support_report_json_status "$bundle_dir" "local_progress.json" "$jq_bin")"
+    support_report_write_link_line "$bundle_dir" "local_progress.json" "Local progress" "$status" "$report_file"
     status="$(support_report_json_status "$bundle_dir" "swarm_inventory.json" "$jq_bin")"
     support_report_write_link_line "$bundle_dir" "swarm_inventory.json" "Swarm inventory" "$status" "$report_file"
     status="$(support_report_json_status "$bundle_dir" "versions.json" "$jq_bin")"
@@ -2461,6 +2806,7 @@ main() {
     # --- Capture doctor JSON ---
     log_detail "Running health checks..."
     capture_doctor_json "$bundle_dir" || true
+    capture_local_progress_json "$bundle_dir" || true
     capture_swarm_status_json "$bundle_dir" || true
     capture_provenance_json "$bundle_dir" || true
     capture_resource_profile_json "$bundle_dir" || true
