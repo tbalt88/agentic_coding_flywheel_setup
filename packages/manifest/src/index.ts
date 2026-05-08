@@ -77,3 +77,19 @@ export type {
   ValidationError as AdvancedValidationError,
   ValidationResult as AdvancedValidationResult,
 } from './validate.js';
+
+export {
+  validatePluginPackage,
+  formatPluginDiagnostics,
+} from './plugin.js';
+
+export type {
+  PluginDiagnostic,
+  PluginDiagnosticCode,
+  PluginDiagnosticSeverity,
+  PluginModule,
+  PluginPackage,
+  PluginValidationOptions,
+  PluginValidationResult,
+  PluginValidationTarget,
+} from './plugin.js';

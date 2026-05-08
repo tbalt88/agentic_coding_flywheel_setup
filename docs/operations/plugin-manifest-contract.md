@@ -93,7 +93,7 @@ fixtures without YAML parser drift.
   },
   "modules": [
     {
-      "id": "plugin.example-tools.cli",
+      "id": "plugin.example_tools.cli",
       "description": "Example command-line tool.",
       "category": "tools",
       "phase": 6,
@@ -150,7 +150,7 @@ Every v1 plugin package must include:
 
 Every module must include:
 
-- `id` using the `plugin.<package-slug>.<module-name>` namespace
+- `id` using the `plugin.<package_slug>.<module_name>` namespace
 - `description`, `category`, `phase`, `run_as`, `optional`,
   `enabled_by_default`
 - `install.kind` and the fields required by that install kind
@@ -162,9 +162,12 @@ Every module must include:
 Plugin module IDs are merged into the first-party manifest only after the full
 package validates. Merge is all-or-nothing.
 
-- Plugin IDs must match `plugin.<package-slug>.<module-name>`.
-- `packageId` must normalize to the same `<package-slug>` used in every module
-  ID.
+- Plugin IDs must match `plugin.<package_slug>.<module_name>`, using only
+  lowercase letters, digits, underscores, and dots so the ID also satisfies the
+  first-party manifest schema.
+- `packageId` must normalize to the same `<package_slug>` used in every module
+  ID. Normalization lowercases the package ID and replaces non-alphanumeric
+  runs with a single underscore.
 - A plugin module must not reuse any first-party ACFS module ID.
 - A plugin module must not reuse any module ID from another loaded plugin.
 - Dependencies may reference first-party IDs or IDs from the same plugin

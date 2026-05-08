@@ -58,7 +58,7 @@ test_declarative_install_kinds_are_bounded() {
 
 test_trust_policy_preserves_first_party_boundaries() {
     require_text "Module ID And Merge Rules" || return 1
-    require_text "plugin.<package-slug>.<module-name>" || return 1
+    require_text "plugin.<package_slug>.<module_name>" || return 1
     require_text "must not reuse any first-party ACFS module ID" || return 1
     require_text "generated function collision" || return 1
     require_text "cannot alter first-party module fields" || return 1
