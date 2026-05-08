@@ -131,6 +131,17 @@ _acfs() {
                                         '-h[Show help message]' \
                                         '--help[Show help message]'
                                     ;;
+                                convergence)
+                                    _arguments \
+                                        '--json[JSON output]' \
+                                        '--markdown[Markdown output]' \
+                                        '--epic[Epic Bead ID]:bead:' \
+                                        '--epic-file[Read epic JSON from file]:file:_files' \
+                                        '--issues-file[Read issue JSON/JSONL from file]:file:_files' \
+                                        '--commits-file[Read commit evidence JSON from file]:file:_files' \
+                                        '-h[Show help message]' \
+                                        '--help[Show help message]'
+                                    ;;
                             esac
                             ;;
                     esac
@@ -189,6 +200,17 @@ _acfs() {
                         '--profile[Role profile]:profile:(balanced codex-heavy review-heavy docs-heavy)' \
                         '--ready-file[Read br ready JSON from file]:file:_files' \
                         '--triage-file[Read bv robot triage JSON from file]:file:_files' \
+                        '-h[Show help message]' \
+                        '--help[Show help message]'
+                    ;;
+                swarm-convergence|swarm_convergence)
+                    _arguments \
+                        '--json[JSON output]' \
+                        '--markdown[Markdown output]' \
+                        '--epic[Epic Bead ID]:bead:' \
+                        '--epic-file[Read epic JSON from file]:file:_files' \
+                        '--issues-file[Read issue JSON/JSONL from file]:file:_files' \
+                        '--commits-file[Read commit evidence JSON from file]:file:_files' \
                         '-h[Show help message]' \
                         '--help[Show help message]'
                     ;;
@@ -332,6 +354,8 @@ _acfs_commands() {
         'swarm_packet:Per-agent startup packet generator'
         'swarm-assign:Role-aware Beads assignment planner'
         'swarm_assign:Role-aware Beads assignment planner'
+        'swarm-convergence:Epic success-criteria convergence audit'
+        'swarm_convergence:Epic success-criteria convergence audit'
         'coordinate:Coordination preflight helpers'
         'coord:Coordination helpers (alias for coordinate)'
         'cheatsheet:Command reference (aliases, shortcuts)'
@@ -386,6 +410,7 @@ _acfs_swarm_commands() {
         'simulate:Dry-run fleet-scale simulation harness'
         'packet:Per-agent startup packet generator'
         'assign:Role-aware Beads assignment planner'
+        'convergence:Epic success-criteria convergence audit'
         'help:Show swarm help'
     )
     _describe -t commands 'swarm command' commands

@@ -999,6 +999,7 @@ print_acfs_help() {
     echo "  swarm doctor        Pre-swarm coordination preflight"
     echo "  swarm simulate      Dry-run 10/25/50 logical-agent harness"
     echo "  swarm assign        Role-aware Beads assignment planner"
+    echo "  swarm convergence   Epic success-criteria convergence audit"
     echo "  coordinate doctor   Alias for swarm doctor"
     echo "  cheatsheet          Command reference (aliases, shortcuts)"
     echo "  changelog [options] Show recent project changes"
@@ -4333,8 +4334,20 @@ main() {
                     echo "Error: swarm_assign.sh not found" >&2
                     return 1
                     ;;
+                convergence|converge|audit)
+                    [[ $# -gt 0 ]] && shift
+                    local swarm_convergence_script=""
+                    swarm_convergence_script="$(_acfs_doctor_find_lib_script "swarm_convergence.sh" 2>/dev/null || true)"
+
+                    if [[ -n "$swarm_convergence_script" ]]; then
+                        _acfs_doctor_exec_bash_script "$swarm_convergence_script" "$@"
+                    fi
+
+                    echo "Error: swarm_convergence.sh not found" >&2
+                    return 1
+                    ;;
                 help|-h|--help)
-                    echo "Usage: acfs swarm <plan|status|doctor|simulate|packet|assign> [--json]"
+                    echo "Usage: acfs swarm <plan|status|doctor|simulate|packet|assign|convergence> [--json]"
                     return 0
                     ;;
                 *)
@@ -4402,6 +4415,18 @@ main() {
             fi
 
             echo "Error: swarm_assign.sh not found" >&2
+            return 1
+            ;;
+        swarm-convergence|swarm_convergence)
+            shift
+            local swarm_convergence_script=""
+            swarm_convergence_script="$(_acfs_doctor_find_lib_script "swarm_convergence.sh" 2>/dev/null || true)"
+
+            if [[ -n "$swarm_convergence_script" ]]; then
+                _acfs_doctor_exec_bash_script "$swarm_convergence_script" "$@"
+            fi
+
+            echo "Error: swarm_convergence.sh not found" >&2
             return 1
             ;;
         coordinate|coord)
