@@ -67,6 +67,16 @@ _acfs() {
                     case $state in
                         swarm_args)
                             case $line[1] in
+                                plan|advisor)
+                                    _arguments \
+                                        '--json[JSON output]' \
+                                        '--agents[Requested agent count]:agents:' \
+                                        '--profile[Launch mix profile]:profile:(balanced codex-heavy review-heavy docs-heavy)' \
+                                        '--workload[Workload model]:workload:(light standard heavy)' \
+                                        '--status-file[Read an existing swarm status snapshot]:file:_files' \
+                                        '-h[Show help message]' \
+                                        '--help[Show help message]'
+                                    ;;
                                 status|snapshot)
                                     _arguments \
                                         '--json[JSON output]' \
@@ -93,6 +103,16 @@ _acfs() {
                             esac
                             ;;
                     esac
+                    ;;
+                swarm-plan|swarm_plan)
+                    _arguments \
+                        '--json[JSON output]' \
+                        '--agents[Requested agent count]:agents:' \
+                        '--profile[Launch mix profile]:profile:(balanced codex-heavy review-heavy docs-heavy)' \
+                        '--workload[Workload model]:workload:(light standard heavy)' \
+                        '--status-file[Read an existing swarm status snapshot]:file:_files' \
+                        '-h[Show help message]' \
+                        '--help[Show help message]'
                     ;;
                 swarm-status|swarm_status)
                     _arguments \
@@ -239,7 +259,9 @@ _acfs_commands() {
         'i:System overview (alias for info)'
         'capacity:Estimate safe/recommended agent counts'
         'cap:Capacity report (alias for capacity)'
-        'swarm:Swarm status, doctor, and dry-run simulation'
+        'swarm:Swarm plan, status, doctor, and dry-run simulation'
+        'swarm-plan:Queue-aware launch advisor'
+        'swarm_plan:Queue-aware launch advisor'
         'swarm-status:Local swarm status snapshot'
         'swarm_status:Local swarm status snapshot'
         'swarm-simulate:Dry-run fleet-scale simulation harness'
@@ -289,6 +311,8 @@ _acfs_dashboard_commands() {
 _acfs_swarm_commands() {
     local commands
     commands=(
+        'plan:Queue-aware launch advisor'
+        'advisor:Queue-aware launch advisor'
         'status:Local coordination snapshot'
         'snapshot:Local coordination snapshot'
         'doctor:Pre-swarm coordination preflight'

@@ -1,8 +1,8 @@
 # Swarm Launch Admission Model
 
-This note records the `bd-h8c2m` contract for a future queue-aware
-`acfs swarm plan` advisor. It is design guidance only; ACFS does not
-currently launch agents from this model.
+This note records the `bd-h8c2m` contract implemented by the queue-aware
+`acfs swarm plan` advisor. ACFS still does not launch agents from this model;
+the command is a read-only planner.
 
 ## Purpose
 
@@ -33,7 +33,7 @@ commands, but stale memories must never be used to override current repo rules.
 
 ## Inputs
 
-The future planner should accept:
+The planner accepts:
 
 | Input | Required | Source |
 | --- | --- | --- |
@@ -48,6 +48,15 @@ The future planner should accept:
 All tool probes must use existing timeout wrappers or bounded fixture input.
 No local CPU-heavy cargo examples should appear in examples; use RCH policy
 language for build/test work.
+
+Copyable examples:
+
+```bash
+acfs swarm plan --agents 10
+acfs swarm plan --agents 25 --profile codex-heavy --workload standard
+acfs swarm plan --json --agents 50 --workload heavy
+acfs swarm plan --json --agents 25 --status-file swarm_status.json
+```
 
 ## Admission Status
 
@@ -230,13 +239,13 @@ The JSON `examples` array should include the same scenarios:
 
 ## Test Plan
 
-The implementation Bead should add fixture-driven tests before exposing the
-advisor in normal workflows:
+The implemented advisor has fixture-driven unit coverage for these cases:
 
-- Fixture status files for healthy, warned, failed, missing RCH, malformed RCH,
-  stale worker telemetry, active Beads, and missing Agent Mail data.
-- Golden JSON outputs for 10, 25, and 50 requested agents.
-- Golden human output for `pass`, `warn`, and `fail`.
+- Fixture status files for healthy, busy RCH, active Beads, missing Agent Mail,
+  and status-file replay.
+- Golden JSON assertions for 10, 25, and 50 requested agents.
+- Human output is produced from the same JSON contract and preserves the
+  not-executed launch command label.
 - Tests proving the command is read-only: no Beads mutation, no Agent Mail send,
   no file deletion, no agent launch, no RCH build execution.
 - Tests proving timeout or malformed optional probes degrade to warnings unless
@@ -246,7 +255,8 @@ advisor in normal workflows:
 
 ## Implementation Notes
 
-Start with a pure planner that accepts explicit JSON fixture paths. Wire live
-collection only after the fixture path is stable. The planner should be easy to
-call from `acfs swarm doctor`, `acfs swarm simulate`, and support bundles, but
-those integrations should remain separate follow-up Beads.
+`scripts/lib/swarm_plan.sh` is the implementation source. It can replay a
+captured status file with `--status-file`, otherwise it runs the bounded
+`swarm_status.sh --json` collector and the capacity model for the requested
+agent count. Integrations from `acfs swarm doctor`, `acfs swarm simulate`, and
+support bundles remain separate follow-up Beads.

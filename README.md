@@ -3351,6 +3351,19 @@ tmux session: acfs-swarm
 
 ### Dry-Run Swarm Simulation
 
+Before launching any real swarm, ask ACFS for a queue-aware plan:
+
+```bash
+acfs swarm plan --agents 25 --profile balanced --workload standard
+```
+
+The planner reads the local swarm status and capacity model, incorporates RCH
+queue pressure, active tmux/NTM sessions, Beads in-progress counts, and host
+resource headroom, then prints a pass/warn/fail recommendation. It is advisory
+only: it does not launch agents, mutate Beads, send Agent Mail, force-release
+reservations, or run build commands. JSON output is available with `--json`,
+and fixture replay is available with `--status-file`.
+
 Before launching a large real swarm, ACFS can run an offline simulation of the control plane:
 
 ```bash

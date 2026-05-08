@@ -994,6 +994,7 @@ print_acfs_help() {
     echo "  info [options]      Quick system overview (terminal/json/html)"
     echo "  status [options]    Quick one-line health summary"
     echo "  capacity [options]  Estimate safe/recommended agent counts"
+    echo "  swarm plan          Queue-aware launch advisor"
     echo "  swarm status        Local swarm/coordination JSON snapshot"
     echo "  swarm doctor        Pre-swarm coordination preflight"
     echo "  swarm simulate      Dry-run 10/25/50 logical-agent harness"
@@ -4259,6 +4260,18 @@ main() {
             shift
             local swarm_subcmd="${1:-status}"
             case "$swarm_subcmd" in
+                plan|advisor)
+                    [[ $# -gt 0 ]] && shift
+                    local swarm_plan_script=""
+                    swarm_plan_script="$(_acfs_doctor_find_lib_script "swarm_plan.sh" 2>/dev/null || true)"
+
+                    if [[ -n "$swarm_plan_script" ]]; then
+                        _acfs_doctor_exec_bash_script "$swarm_plan_script" "$@"
+                    fi
+
+                    echo "Error: swarm_plan.sh not found" >&2
+                    return 1
+                    ;;
                 status|snapshot)
                     [[ $# -gt 0 ]] && shift
                     local swarm_status_script=""
@@ -4296,7 +4309,7 @@ main() {
                     return 1
                     ;;
                 help|-h|--help)
-                    echo "Usage: acfs swarm <status|doctor|simulate> [--json]"
+                    echo "Usage: acfs swarm <plan|status|doctor|simulate> [--json]"
                     return 0
                     ;;
                 *)
@@ -4305,6 +4318,18 @@ main() {
                     return 2
                     ;;
             esac
+            ;;
+        swarm-plan|swarm_plan)
+            shift
+            local swarm_plan_script=""
+            swarm_plan_script="$(_acfs_doctor_find_lib_script "swarm_plan.sh" 2>/dev/null || true)"
+
+            if [[ -n "$swarm_plan_script" ]]; then
+                _acfs_doctor_exec_bash_script "$swarm_plan_script" "$@"
+            fi
+
+            echo "Error: swarm_plan.sh not found" >&2
+            return 1
             ;;
         swarm-status|swarm_status)
             shift

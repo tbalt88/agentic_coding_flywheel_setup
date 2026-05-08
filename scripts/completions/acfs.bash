@@ -8,7 +8,7 @@ _acfs_completions() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="newproj new services svc services-setup setup doctor check session sessions update status continue progress info i capacity cap swarm swarm-status swarm_status swarm-simulate swarm_simulate coordinate coord cheatsheet cs changelog changes log export-config export dashboard dash support-bundle bundle version help"
+    local commands="newproj new services svc services-setup setup doctor check session sessions update status continue progress info i capacity cap swarm swarm-plan swarm_plan swarm-status swarm_status swarm-simulate swarm_simulate coordinate coord cheatsheet cs changelog changes log export-config export dashboard dash support-bundle bundle version help"
 
     # Subcommand-specific flags
     local newproj_flags="-i --interactive --no-br --no-claude --no-agents -h --help"
@@ -16,7 +16,8 @@ _acfs_completions() {
     local status_flags="--json --short --check-updates -h --help"
     local info_flags="--json --html --minimal"
     local capacity_flags="--json --workload --profile --recommend-ntm -h --help"
-    local swarm_subcommands="status snapshot doctor preflight simulate help"
+    local swarm_subcommands="plan advisor status snapshot doctor preflight simulate help"
+    local swarm_plan_flags="--json --agents --profile --workload --status-file -h --help"
     local swarm_status_flags="--json -h --help"
     local swarm_doctor_flags="--json --status-file -h --help"
     local swarm_simulate_flags="--json --counts --workload --artifact-dir --status-file -h --help"
@@ -40,7 +41,7 @@ _acfs_completions() {
     local cmd=""
     for ((i=1; i < cword; i++)); do
         case "${words[i]}" in
-            newproj|new|services|svc|services-setup|setup|doctor|check|session|sessions|update|status|continue|progress|info|i|capacity|cap|swarm|swarm-status|swarm_status|swarm-simulate|swarm_simulate|coordinate|coord|cheatsheet|cs|changelog|changes|log|export-config|export|dashboard|dash|support-bundle|bundle|version|help)
+            newproj|new|services|svc|services-setup|setup|doctor|check|session|sessions|update|status|continue|progress|info|i|capacity|cap|swarm|swarm-plan|swarm_plan|swarm-status|swarm_status|swarm-simulate|swarm_simulate|coordinate|coord|cheatsheet|cs|changelog|changes|log|export-config|export|dashboard|dash|support-bundle|bundle|version|help)
                 cmd="${words[i]}"
                 break
                 ;;
@@ -72,7 +73,7 @@ _acfs_completions() {
             local swarm_cmd=""
             for ((j=i+1; j < cword; j++)); do
                 case "${words[j]}" in
-                    status|snapshot|doctor|preflight|simulate|help)
+                    plan|advisor|status|snapshot|doctor|preflight|simulate|help)
                         swarm_cmd="${words[j]}"
                         break
                         ;;
@@ -80,6 +81,9 @@ _acfs_completions() {
             done
 
             case "$swarm_cmd" in
+                plan|advisor)
+                    mapfile -t COMPREPLY < <(compgen -W "$swarm_plan_flags" -- "$cur")
+                    ;;
                 status|snapshot)
                     mapfile -t COMPREPLY < <(compgen -W "$swarm_status_flags" -- "$cur")
                     ;;
@@ -96,6 +100,10 @@ _acfs_completions() {
                     mapfile -t COMPREPLY < <(compgen -W "$swarm_subcommands" -- "$cur")
                     ;;
             esac
+            return
+            ;;
+        swarm-plan|swarm_plan)
+            mapfile -t COMPREPLY < <(compgen -W "$swarm_plan_flags" -- "$cur")
             return
             ;;
         swarm-status|swarm_status)

@@ -2768,6 +2768,7 @@ sync_acfs_deployed() {
         "scripts/lib/cheatsheet.sh:scripts/lib/cheatsheet.sh"
         "scripts/lib/dashboard.sh:scripts/lib/dashboard.sh"
         "scripts/lib/support.sh:scripts/lib/support.sh"
+        "scripts/lib/swarm_plan.sh:scripts/lib/swarm_plan.sh"
         "scripts/lib/swarm_status.sh:scripts/lib/swarm_status.sh"
         "scripts/lib/swarm_doctor.sh:scripts/lib/swarm_doctor.sh"
         "scripts/lib/swarm_simulation.sh:scripts/lib/swarm_simulation.sh"
