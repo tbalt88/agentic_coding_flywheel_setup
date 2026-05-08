@@ -357,7 +357,30 @@ capacity_emit_json() {
             ntm: {
                 recommended: $recommend_ntm,
                 agent_count: (if $recommend_ntm then $recommended_agents else null end),
-                launch_plan: (if $recommend_ntm then "Create one coordinator session plus focused worker sessions sized to the recommended agent count." else null end)
+                launch_plan: (if $recommend_ntm then "Create one coordinator session plus focused worker sessions sized to the recommended agent count." else null end),
+                profiles: (
+                    if $recommend_ntm then
+                        def profile_status($count):
+                            if $count <= $recommended_agents then "pass"
+                            elif $count <= $safe_agents then "warn"
+                            else "fail"
+                            end;
+                        [
+                            {agents: 5, cc: 2, cod: 2, gmi: 1, label: "swarm-5"},
+                            {agents: 10, cc: 4, cod: 4, gmi: 2, label: "swarm-10"},
+                            {agents: 25, cc: 10, cod: 10, gmi: 5, label: "swarm-25"},
+                            {agents: 50, cc: 20, cod: 20, gmi: 10, label: "swarm-50"}
+                        ] | map(. + {
+                            status: profile_status(.agents),
+                            command: ("ntm spawn myproject --label " + .label + " --cc=" + (.cc | tostring) + " --cod=" + (.cod | tostring) + " --gmi=" + (.gmi | tostring) + " --assign --stagger-mode=smart"),
+                            rch_policy: "Use rch exec -- for cargo build/test/check/clippy/bench/run/doc commands inside every agent pane.",
+                            agent_mail: "Register agents, send a start message on the bead thread, and reserve files before edits.",
+                            beads: "Use br ready --json and bv --robot-triage for assignment truth; never launch bare bv."
+                        })
+                    else
+                        []
+                    end
+                )
             }
         }'
 }
@@ -400,6 +423,17 @@ capacity_emit_human() {
         echo "NTM Recommendation"
         echo "  Agent count:         $CAPACITY_RECOMMENDED_AGENTS"
         echo "  Plan:                one coordinator session plus focused worker sessions"
+        echo ""
+        echo "Launch Profiles"
+        echo "  5 agents:            ntm spawn myproject --label swarm-5 --cc=2 --cod=2 --gmi=1 --assign --stagger-mode=smart"
+        echo "  10 agents:           ntm spawn myproject --label swarm-10 --cc=4 --cod=4 --gmi=2 --assign --stagger-mode=smart"
+        echo "  25 agents:           ntm spawn myproject --label swarm-25 --cc=10 --cod=10 --gmi=5 --assign --stagger-mode=smart"
+        echo "  50 agents:           ntm spawn myproject --label swarm-50 --cc=20 --cod=20 --gmi=10 --assign --stagger-mode=smart"
+        echo ""
+        echo "Coordination"
+        echo "  RCH:                 use rch exec -- for CPU-heavy Rust build/test commands"
+        echo "  Agent Mail:          register, announce start, reserve files before edits"
+        echo "  Beads/BV:            use br ready --json and bv --robot-triage; never bare bv"
     fi
 
     if [[ "$CAPACITY_RCH_AVAILABLE" != "true" ]]; then

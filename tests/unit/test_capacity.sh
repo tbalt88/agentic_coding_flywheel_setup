@@ -43,7 +43,10 @@ test_high_capacity_json() {
       .capacity.safe_agent_count == 64 and
       .capacity.recommended_agent_count == 44 and
       .profile_check.status == "pass" and
-      .ntm.agent_count == 44
+      .ntm.agent_count == 44 and
+      (.ntm.profiles | length) == 4 and
+      (.ntm.profiles[] | select(.agents == 25 and .status == "pass" and (.command | contains("ntm spawn myproject --label swarm-25")))) and
+      (.ntm.profiles[] | select(.agents == 50 and .status == "warn" and (.rch_policy | contains("rch exec --"))))
     ' <<<"$output" >/dev/null
 
     pass "high_capacity_json"
@@ -86,6 +89,9 @@ test_human_output() {
     grep -Fq "ACFS Capacity Report" <<<"$output"
     grep -Fq "Recommended agents:" <<<"$output"
     grep -Fq "Profile Check" <<<"$output"
+    grep -Fq "Launch Profiles" <<<"$output"
+    grep -Fq "25 agents:" <<<"$output"
+    grep -Fq "Agent Mail:" <<<"$output"
 
     pass "human_output"
 }
