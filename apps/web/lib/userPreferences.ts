@@ -110,6 +110,7 @@ export function normalizeGitRef(ref: string | null | undefined): string | null {
   if (value.includes("..")) return null;
   if (value.includes("@{")) return null;
   if (value === ".lock" || value.endsWith(".lock")) return null;
+  if (value.split("/").includes("master")) return null;
   return value;
 }
 

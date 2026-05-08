@@ -31,6 +31,14 @@ describe("buildInstallCommand", () => {
     expect(command).not.toContain("TARGET_USER=");
     expect(command).not.toContain("Admin");
   });
+
+  test("rejects the legacy master branch in generated install commands", () => {
+    const command = buildInstallCommand("vibe", "master", "ubuntu");
+
+    expect(command).toContain("/main/install.sh");
+    expect(command).not.toContain("/master/install.sh");
+    expect(command).not.toContain('--ref "master"');
+  });
 });
 
 describe("buildCommands", () => {
@@ -87,6 +95,17 @@ describe("buildCommands", () => {
 });
 
 describe("buildHandoffRunbook", () => {
+  const forbiddenCommandSnippets = /\bmaster\b|rm\s+-rf|git\s+reset|git\s+clean|\b(?:npm|yarn|pnpm)\b/i;
+
+  function expectSafeHandoffArtifacts(artifacts: string[], rawHost: string | null) {
+    for (const artifact of artifacts) {
+      expect(artifact).not.toMatch(forbiddenCommandSnippets);
+      if (rawHost) {
+        expect(artifact).not.toContain(rawHost);
+      }
+    }
+  }
+
   test("records the exact installer command while redacting the target host", () => {
     const runbook = buildHandoffRunbook({
       ip: "203.0.113.42",
@@ -143,6 +162,54 @@ describe("buildHandoffRunbook", () => {
     expect(markdown).toContain("ssh root@<ipv6-target-host>");
     expect(markdown).toContain("acfs support-bundle");
     expect(markdown).not.toContain("2001:db8::42");
+  });
+
+  test("keeps handoff artifacts safe across normal missing and malformed wizard state", () => {
+    const scenarios = [
+      {
+        name: "normal IPv4 wizard state",
+        inputs: { ip: "203.0.113.42", os: "mac" as const, username: "ubuntu", mode: "vibe" as const, ref: null },
+        expectedHostKind: "ipv4",
+        expectedSourceRef: "main",
+        rawHost: "203.0.113.42",
+      },
+      {
+        name: "missing target host and invalid optional fields",
+        inputs: { ip: "", os: "windows" as const, username: "bad user", mode: "safe" as const, ref: "bad ref" },
+        expectedHostKind: "invalid_or_missing",
+        expectedSourceRef: "main",
+        rawHost: null,
+      },
+      {
+        name: "malformed target host and legacy branch input",
+        inputs: {
+          ip: "192.0.2.10; rm -rf /",
+          os: "linux" as const,
+          username: "Admin;sudo",
+          mode: "vibe" as const,
+          ref: "master",
+        },
+        expectedHostKind: "invalid_or_missing",
+        expectedSourceRef: "main",
+        rawHost: "192.0.2.10",
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      const runbook = buildHandoffRunbook(scenario.inputs);
+      const json = serializeHandoffRunbookJson(runbook);
+      const markdown = formatHandoffRunbookMarkdown(runbook);
+
+      expect(runbook.targetHost.kind).toBe(scenario.expectedHostKind);
+      expect(runbook.targetHost.value).not.toBe(scenario.rawHost);
+      expect(runbook.wizardSelections.sourceRef).toBe(scenario.expectedSourceRef);
+      expect(runbook.install.command).toContain(`/${scenario.expectedSourceRef}/install.sh`);
+      expect(runbook.support.bundleCommand).toBe("acfs support-bundle");
+      expect(runbook.support.reviewArtifacts).toEqual(["support-report.md", "manifest.json"]);
+      expect(runbook.recoveryCommands.map((command) => command.command)).toContain("acfs support-bundle");
+
+      expectSafeHandoffArtifacts([json, markdown, ...runbook.recoveryCommands.map((command) => command.command)], scenario.rawHost);
+    }
   });
 });
 
