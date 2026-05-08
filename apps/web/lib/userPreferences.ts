@@ -327,9 +327,9 @@ export function useCreateVPSChecklist(): [string[], (items: string[]) => void, b
   });
 
   const setChecklist = useCallback((items: string[]) => {
-    if (setCreateVPSChecklist(items)) {
-      queryClient.setQueryData(userPreferencesKeys.createVPSChecklist, getCreateVPSChecklist());
-    }
+    const normalized = normalizeStringList(items);
+    setCreateVPSChecklist(normalized);
+    queryClient.setQueryData(userPreferencesKeys.createVPSChecklist, normalized);
   }, [queryClient]);
 
   return [data ?? [], setChecklist, status === "success"];
@@ -361,7 +361,9 @@ export function useCheckedServices(): [string[], (serviceId: string) => void, bo
   });
 
   const toggleService = useCallback((serviceId: string) => {
-    const currentIds = getCheckedServices();
+    const currentIds =
+      queryClient.getQueryData<string[]>(userPreferencesKeys.checkedServices) ??
+      getCheckedServices();
     const currentSet = new Set(currentIds);
     if (currentSet.has(serviceId)) {
       currentSet.delete(serviceId);
@@ -369,9 +371,8 @@ export function useCheckedServices(): [string[], (serviceId: string) => void, bo
       currentSet.add(serviceId);
     }
     const newIds = [...currentSet];
-    if (setCheckedServices(newIds)) {
-      queryClient.setQueryData(userPreferencesKeys.checkedServices, newIds);
-    }
+    setCheckedServices(newIds);
+    queryClient.setQueryData(userPreferencesKeys.checkedServices, newIds);
   }, [queryClient]);
 
   return [data ?? [], toggleService, status === "success"];

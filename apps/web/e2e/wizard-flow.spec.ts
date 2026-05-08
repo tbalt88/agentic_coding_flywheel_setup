@@ -745,8 +745,6 @@ test.describe("No localStorage (query-only resilience)", () => {
 
     // Step 1: pick an OS
     await page.goto("/wizard/os-selection");
-    await page.evaluate(() => localStorage.clear());
-    await page.reload();
     await page.waitForLoadState("domcontentloaded");
 
     // On mobile, auto-detect is disabled, so Continue should start disabled.
@@ -790,6 +788,7 @@ test.describe("No localStorage (query-only resilience)", () => {
     const url = new URL(page.url());
     expect(url.searchParams.get("os")).toBe("mac");
     expect(url.searchParams.get("ip")).toBe("10.10.10.10");
+    expect(url.searchParams.get("steps")).toBe("1,2,3,4,5");
     await expect(page.locator('code:has-text("10.10.10.10")').first()).toBeVisible();
   });
 });

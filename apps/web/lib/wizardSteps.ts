@@ -203,6 +203,7 @@ export function validateStep(stepId: number): ValidationResult {
 
 /** localStorage key for storing completed steps */
 export const COMPLETED_STEPS_KEY = "agent-flywheel-wizard-completed-steps";
+const COMPLETED_STEPS_QUERY_KEY = "steps";
 
 export const COMPLETED_STEPS_CHANGED_EVENT =
   "acfs:wizard:completed-steps-changed";
@@ -225,6 +226,38 @@ function normalizeCompletedSteps(steps: unknown[]): number[] {
       n <= TOTAL_STEPS
   );
   return Array.from(new Set(validSteps)).sort((a, b) => a - b);
+}
+
+function getCompletedStepsFromQuery(): number[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = new URLSearchParams(window.location.search).get(
+      COMPLETED_STEPS_QUERY_KEY
+    );
+    if (!raw) return [];
+    return normalizeCompletedSteps(
+      raw.split(",").map((value) => Number.parseInt(value, 10))
+    );
+  } catch {
+    return [];
+  }
+}
+
+function setCompletedStepsQuery(steps: number[]): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const normalized = normalizeCompletedSteps(steps);
+    const url = new URL(window.location.href);
+    if (normalized.length === 0) {
+      url.searchParams.delete(COMPLETED_STEPS_QUERY_KEY);
+    } else {
+      url.searchParams.set(COMPLETED_STEPS_QUERY_KEY, normalized.join(","));
+    }
+    window.history.replaceState(window.history.state, "", url.toString());
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function getHighestContiguousCompletedStep(steps: number[]): number {
@@ -263,23 +296,25 @@ function emitCompletedStepsChanged(steps: number[]): void {
   );
 }
 
-/** Get completed steps from localStorage */
+/** Get completed steps from localStorage, with URL fallback when storage is unavailable. */
 export function getCompletedSteps(): number[] {
+  const querySteps = getCompletedStepsFromQuery();
   const parsed = safeGetJSON<unknown[]>(COMPLETED_STEPS_KEY);
   if (Array.isArray(parsed)) {
-    return normalizeCompletedSteps(parsed);
+    return normalizeCompletedSteps([...parsed, ...querySteps]);
   }
-  return [];
+  return querySteps;
 }
 
-/** Save completed steps to localStorage */
+/** Save completed steps to localStorage, falling back to the URL for storage-blocked browsers. */
 export function setCompletedSteps(steps: number[]): boolean {
   const normalized = normalizeCompletedSteps(steps);
   const didPersist = safeSetJSON(COMPLETED_STEPS_KEY, normalized);
-  if (didPersist) {
+  const didPersistQuery = didPersist ? false : setCompletedStepsQuery(normalized);
+  if (didPersist || didPersistQuery) {
     emitCompletedStepsChanged(normalized);
   }
-  return didPersist;
+  return didPersist || didPersistQuery;
 }
 
 /** Mark a step as completed (pure function, returns new array) */
