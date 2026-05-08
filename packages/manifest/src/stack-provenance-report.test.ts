@@ -138,6 +138,34 @@ describe('stack provenance report', () => {
     expect(report.tools[0].release.relation).toBe('same_or_older');
   });
 
+  test('ignores checksum candidate timestamp-only changes', async () => {
+    const manifest = manifestFor([
+      stackModule('ultimate_bug_scanner', 'ubs', 'stack.ultimate_bug_scanner'),
+    ]);
+    const current = checksums({ ubs: { repo: 'ultimate_bug_scanner' } });
+    const candidate: ChecksumsFile = {
+      generatedAt: '2026-01-16T00:00:00Z',
+      installers: current.installers,
+    };
+
+    const report = await buildStackProvenanceReport({
+      manifest,
+      currentChecksums: current,
+      candidateChecksums: candidate,
+      githubReleases: release('ultimate_bug_scanner', {
+        status: 'ok',
+        tagName: 'v1.0.0',
+        publishedAt: '2026-01-01T00:00:00Z',
+      }),
+      network: 'check',
+    });
+
+    expect(report.ok).toBe(true);
+    expect(report.checksumDiffs.stack).toEqual([]);
+    expect(report.checksumDiffs.unrelated).toEqual([]);
+    expect(report.tools[0].candidate.status).toBe('pass');
+  });
+
   test('warns when a stack repo has no latest release metadata', async () => {
     const manifest = manifestFor([
       stackModule('beads_viewer', 'bv', 'stack.beads_viewer'),

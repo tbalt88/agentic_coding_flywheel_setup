@@ -69,7 +69,7 @@ jobs:
       - name: Install ShellCheck
         run: |
           sudo apt-get update
-          sudo apt-get install -y shellcheck
+          sudo apt-get install -y shellcheck jq
 
       - name: Run ShellCheck
         shell: bash
@@ -98,6 +98,9 @@ jobs:
       - name: Run installer fault-injection contract test
         run: bash tests/unit/test_installer_fault_contract.sh
 
+      - name: Run release doctor governance tests
+        run: bash tests/unit/test_release_doctor.sh
+
       - name: Run Ubuntu upgrade rehearsal tests
         run: bash scripts/tests/ubuntu_upgrade_test.sh
 
@@ -119,6 +122,10 @@ jobs:
 
       - name: Check manifest drift
         run: bun run generate --diff
+        working-directory: packages/manifest
+
+      - name: Run manifest governance tests
+        run: bun test src/drift-contract.test.ts src/stack-provenance-report.test.ts
         working-directory: packages/manifest
 
       - name: Install ShellCheck

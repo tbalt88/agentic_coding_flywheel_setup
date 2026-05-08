@@ -193,6 +193,18 @@ describe('manifest drift contract', () => {
     expect(codes(root)).toContain('WEB_TOOL_MISSING');
   });
 
+  test('detects stale generated website command tldr and lesson indexes', () => {
+    const root = cleanFixture();
+    writeFixtureFile(root, 'apps/web/lib/generated/manifest-commands.ts', 'export const manifestCommands = [];\n');
+    writeFixtureFile(root, 'apps/web/lib/generated/manifest-tldr.ts', 'export const manifestTldrTools = [];\n');
+    writeFixtureFile(root, 'apps/web/lib/generated/manifest-lessons-index.ts', 'export const manifestLessonLinks = [];\n');
+
+    const mismatchCodes = codes(root);
+    expect(mismatchCodes).toContain('WEB_COMMAND_MISSING');
+    expect(mismatchCodes).toContain('WEB_TLDR_MISSING');
+    expect(mismatchCodes).toContain('LESSON_LINK_MISSING');
+  });
+
   test('detects missing generated doctor checks', () => {
     const root = cleanFixture();
     writeFixtureFile(

@@ -57,6 +57,26 @@ run_release_doctor() {
     set -u
 }
 
+run_release_doctor_human() {
+    set +e
+    LAST_OUTPUT="$(
+        env \
+            ACFS_RELEASE_DOCTOR_GIT_BRANCH="$TEST_BRANCH" \
+            ACFS_RELEASE_DOCTOR_GIT_STATUS="$TEST_GIT_STATUS" \
+            ACFS_RELEASE_DOCTOR_ORIGIN_MAIN="$TEST_ORIGIN_MAIN" \
+            ACFS_RELEASE_DOCTOR_ORIGIN_MASTER="$TEST_ORIGIN_MASTER" \
+            ACFS_RELEASE_DOCTOR_CHANGED_FILES="$TEST_CHANGED_FILES" \
+            ACFS_RELEASE_DOCTOR_FAKE_SHELLCHECK_STATUS="$TEST_SHELLCHECK_STATUS" \
+            ACFS_RELEASE_DOCTOR_FAKE_MANIFEST_DRIFT_STATUS="$TEST_MANIFEST_STATUS" \
+            ACFS_RELEASE_DOCTOR_FAKE_CHECKSUM_CANDIDATE_STATUS="$TEST_CHECKSUM_STATUS" \
+            ACFS_RELEASE_DOCTOR_FAKE_WEB_CHECKS_STATUS="$TEST_WEB_STATUS" \
+            ACFS_RELEASE_DOCTOR_REPO_ROOT="$TEST_REPO_ROOT" \
+            bash "$RELEASE_DOCTOR" "$@" 2>&1
+    )"
+    LAST_STATUS=$?
+    set -u
+}
+
 assert_jq() {
     local expression="$1"
     if jq -e "$expression" >/dev/null 2>&1 <<< "$LAST_OUTPUT"; then
@@ -164,6 +184,96 @@ BASH
     '
 }
 
+test_checksum_candidate_target_diff_fails() {
+    local fixture="$ARTIFACT_DIR/checksum-target-diff"
+    mkdir -p "$fixture/scripts/lib"
+    cat > "$fixture/checksums.yaml" <<'YAML'
+# checksums.yaml - Auto-generated original timestamp
+# Run: ./scripts/lib/security.sh --update-checksums
+
+installers:
+  example:
+    url: "https://example.test/install.sh"
+    sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+YAML
+    cat > "$fixture/scripts/lib/security.sh" <<'BASH'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" != "--update-checksums" ]]; then
+    exit 2
+fi
+cat <<'YAML'
+# checksums.yaml - Auto-generated replacement timestamp
+# Run: ./scripts/lib/security.sh --update-checksums
+
+installers:
+  example:
+    url: "https://example.test/install.sh"
+    sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+YAML
+BASH
+
+    TEST_REPO_ROOT="$fixture"
+    TEST_CHECKSUM_STATUS=""
+    run_release_doctor --network=check --web=never
+    [[ "$LAST_STATUS" -eq 1 ]] || return 1
+    assert_jq '
+      .ok == false and
+      (.checks[] | select(.id == "checksum_candidate").status) == "fail" and
+      (.checks[] | select(.id == "checksum_candidate").detail | contains("checksum candidate differs"))
+    '
+}
+
+test_checksum_candidate_unrelated_diff_fails() {
+    local fixture="$ARTIFACT_DIR/checksum-unrelated-diff"
+    mkdir -p "$fixture/scripts/lib"
+    cat > "$fixture/checksums.yaml" <<'YAML'
+# checksums.yaml - Auto-generated original timestamp
+# Run: ./scripts/lib/security.sh --update-checksums
+
+installers:
+  example:
+    url: "https://example.test/install.sh"
+    sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  unrelated:
+    url: "https://unrelated.test/install.sh"
+    sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+YAML
+    cat > "$fixture/scripts/lib/security.sh" <<'BASH'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" != "--update-checksums" ]]; then
+    exit 2
+fi
+cat <<'YAML'
+# checksums.yaml - Auto-generated replacement timestamp
+# Run: ./scripts/lib/security.sh --update-checksums
+
+installers:
+  example:
+    url: "https://example.test/install.sh"
+    sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  unrelated:
+    url: "https://unrelated.test/install.sh"
+    sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+YAML
+BASH
+
+    TEST_REPO_ROOT="$fixture"
+    TEST_CHECKSUM_STATUS=""
+    run_release_doctor --network=check --web=never
+    [[ "$LAST_STATUS" -eq 1 ]] || return 1
+    assert_jq '
+      .ok == false and
+      (.checks[] | select(.id == "checksum_candidate").status) == "fail" and
+      (.checks[] | select(.id == "checksum_candidate").detail | contains("checksum candidate differs"))
+    '
+}
+
 test_web_check_gating() {
     TEST_WEB_STATUS="fail"
     run_release_doctor --network=check
@@ -184,6 +294,15 @@ test_help_mentions_release_workflow() {
     [[ "$LAST_OUTPUT" == *"--web=auto|always|never"* ]]
 }
 
+test_human_output_reports_governance_checks() {
+    run_release_doctor_human --network=skip --web=never
+    [[ "$LAST_STATUS" -eq 0 ]] || return 1
+    [[ "$LAST_OUTPUT" == *"ACFS release doctor"* ]] || return 1
+    [[ "$LAST_OUTPUT" == *"[PASS] Branch policy"* ]] || return 1
+    [[ "$LAST_OUTPUT" == *"[SKIP] Verified-installer checksum candidate"* ]] || return 1
+    [[ "$LAST_OUTPUT" == *"Release readiness: ready"* ]]
+}
+
 if ! command -v jq >/dev/null 2>&1; then
     printf '[FAIL] jq is required for release doctor tests\n'
     exit 1
@@ -194,8 +313,11 @@ run_test "fail report" test_fail_report
 run_test "warning report" test_warning_report
 run_test "skipped network check" test_skipped_network_check
 run_test "checksum candidate ignores progress stderr" test_checksum_candidate_ignores_progress_stderr
+run_test "checksum candidate target diff fails" test_checksum_candidate_target_diff_fails
+run_test "checksum candidate unrelated diff fails" test_checksum_candidate_unrelated_diff_fails
 run_test "web check gating" test_web_check_gating
 run_test "help mentions release workflow" test_help_mentions_release_workflow
+run_test "human output reports governance checks" test_human_output_reports_governance_checks
 
 printf '\nPassed: %d\nFailed: %d\n' "$TESTS_PASSED" "$TESTS_FAILED"
 if [[ "$TESTS_FAILED" -gt 0 ]]; then
