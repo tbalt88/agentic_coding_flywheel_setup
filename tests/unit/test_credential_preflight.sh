@@ -176,6 +176,40 @@ PASSWORD=abc
     pass "benign_examples_pass"
 }
 
+test_detects_hex_encoded_secret_values_under_secret_keys() {
+    local fixture="$ARTIFACT_DIR/hex-secret/.env"
+    local output="$ARTIFACT_DIR/hex-secret.json"
+    local secret="0123456789abcdef0123456789abcdef"
+
+    write_fixture "$fixture" "API_KEY=$secret"
+
+    if bash "$CREDENTIAL_PREFLIGHT_SH" --json --file "$fixture" > "$output"; then
+        return 1
+    fi
+
+    assert_category_present "$output" "generic_secret" || return 1
+    assert_no_raw_secret "$output" "$secret" || return 1
+
+    pass "detects_hex_encoded_secret_values_under_secret_keys"
+}
+
+test_json_secret_value_detection_ignores_unrelated_placeholder_words() {
+    local fixture="$ARTIFACT_DIR/json-value/config.json"
+    local output="$ARTIFACT_DIR/json-value.json"
+    local secret="real-secret-value-12345"
+
+    write_fixture "$fixture" "{\"api_key\":\"$secret\",\"note\":\"example fixture text\"}"
+
+    if bash "$CREDENTIAL_PREFLIGHT_SH" --json --file "$fixture" > "$output"; then
+        return 1
+    fi
+
+    assert_category_present "$output" "generic_secret" || return 1
+    assert_no_raw_secret "$output" "$secret" || return 1
+
+    pass "json_secret_value_detection_ignores_unrelated_placeholder_words"
+}
+
 test_binary_and_unreadable_files_are_skipped() {
     local binary_file="$ARTIFACT_DIR/skipped/binary.bin"
     local unreadable_file="$ARTIFACT_DIR/skipped/unreadable.env"
@@ -254,6 +288,8 @@ main() {
     run_test test_secret_matrix_detects_categories_without_value_leaks
     run_test test_detects_private_key_marker
     run_test test_benign_examples_pass
+    run_test test_detects_hex_encoded_secret_values_under_secret_keys
+    run_test test_json_secret_value_detection_ignores_unrelated_placeholder_words
     run_test test_binary_and_unreadable_files_are_skipped
     run_test test_excluded_paths_are_opted_out
     run_test test_default_scan_covers_shell_history_and_acfs_state

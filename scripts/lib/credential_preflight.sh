@@ -320,7 +320,6 @@ credential_preflight_value_is_placeholder() {
     lower="${value,,}"
     [[ -z "$lower" ]] && return 0
     [[ "$lower" =~ ^[0-9]+$ ]] && return 0
-    [[ "$lower" =~ ^[a-f0-9]{32,64}$ ]] && return 0
     [[ "$lower" == *"<redacted"* ||
        "$lower" == *"redacted"* ||
        "$lower" == *"example"* ||
@@ -336,6 +335,29 @@ credential_preflight_value_is_placeholder() {
        "$lower" == *"notasecret"* ||
        "$lower" == *"test-token"* ||
        "$lower" == *"test_token"* ]]
+}
+
+credential_preflight_key_is_secret_like() {
+    local key="${1:-}"
+    local lower=""
+
+    lower="${key,,}"
+    case "$lower" in
+        *api_key*|*api-key*|\
+        *api_secret*|*api-secret*|\
+        *secret_key*|*secret-key*|\
+        *access_key*|*access-key*|\
+        *access_token*|*access-token*|\
+        *refresh_token*|*refresh-token*|\
+        *auth_token*|*auth-token*|\
+        *client_secret*|*client-secret*|\
+        *private_key*|*private-key*|\
+        *password*|*passwd*|*secret*|*token*)
+            return 0
+            ;;
+    esac
+
+    return 1
 }
 
 credential_preflight_scan_line() {
@@ -393,10 +415,10 @@ credential_preflight_scan_line() {
 
     [[ "$specific" == true ]] && return 0
 
-    if [[ "$lower" =~ \"([a-z][a-z0-9_-]*(api[_-]?key|api[_-]?secret|secret[_-]?key|access[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|client[_-]?secret|private[_-]?key|password|passwd|secret|token))\"[[:space:]]*:[[:space:]]*\"([^\"]{4,})\" ]]; then
-        value="$lower"
-        if ! credential_preflight_value_is_placeholder "$value"; then
-            if [[ "$lower" == *"password"* || "$lower" == *"passwd"* ]]; then
+    if [[ "$lower" =~ \"([a-z][a-z0-9_-]*)\"[[:space:]]*:[[:space:]]*\"([^\"]{4,})\" ]]; then
+        value="${BASH_REMATCH[2]:-}"
+        if credential_preflight_key_is_secret_like "${BASH_REMATCH[1]:-}" && ! credential_preflight_value_is_placeholder "$value"; then
+            if [[ "${BASH_REMATCH[1]:-}" == *"password"* || "${BASH_REMATCH[1]:-}" == *"passwd"* ]]; then
                 credential_preflight_add_finding "$root" "$path" "$source" "$line_number" "password" "secret-like JSON key"
             else
                 credential_preflight_add_finding "$root" "$path" "$source" "$line_number" "generic_secret" "secret-like JSON key"
@@ -405,9 +427,9 @@ credential_preflight_scan_line() {
         fi
     fi
 
-    if [[ "$lower" =~ (^|[^a-z0-9_-])([a-z][a-z0-9_-]*(api[_-]?key|api[_-]?secret|secret[_-]?key|access[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|client[_-]?secret|private[_-]?key|password|passwd|secret|token))[[:space:]]*[:=][[:space:]]*[\"\']?([^\"\'\<\>\ 	]{4,}) ]]; then
-        value="${BASH_REMATCH[4]:-}"
-        if ! credential_preflight_value_is_placeholder "$value"; then
+    if [[ "$lower" =~ (^|[^a-z0-9_-])([a-z][a-z0-9_-]*)[[:space:]]*[:=][[:space:]]*[\"\']?([^\"\'\<\>\ 	]{4,}) ]]; then
+        value="${BASH_REMATCH[3]:-}"
+        if credential_preflight_key_is_secret_like "${BASH_REMATCH[2]:-}" && ! credential_preflight_value_is_placeholder "$value"; then
             case "${BASH_REMATCH[2]:-}" in
                 *password*|*passwd*) credential_preflight_add_finding "$root" "$path" "$source" "$line_number" "password" "secret-like assignment key" ;;
                 *) credential_preflight_add_finding "$root" "$path" "$source" "$line_number" "generic_secret" "secret-like assignment key" ;;
