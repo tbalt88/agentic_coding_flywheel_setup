@@ -69,7 +69,7 @@ valid_packet_fixture() {
     "manualStepsRemaining": [
       "Log in to the provider console and choose the ACFS-recommended VPS product.",
       "Select the desired region and Ubuntu image from the provider UI.",
-      "Paste or select the public SSH key for root access.",
+      "Use the provider password flow, keep root as the initial login user, and save the temporary VPS root password.",
       "Complete checkout and payment manually."
     ]
   },

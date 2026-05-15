@@ -367,14 +367,14 @@ export const PROVIDER_PACKET_MANUAL_STEPS_BY_PROVIDER: Record<string, string[]> 
   contabo: [
     "Log in to the provider console and choose the ACFS-recommended VPS product.",
     "Select the desired region and Ubuntu image from the provider UI.",
-    "Paste or select the public SSH key for root access.",
+    "Use the provider password flow, keep root as the initial login user, and save the temporary VPS root password.",
     "Complete checkout and payment manually.",
     "Copy the assigned host address into the wizard; do not store it in a support-safe packet projection.",
   ],
   ovh: [
     "Log in to the provider console and choose the ACFS-recommended VPS product.",
     "Select the desired region and Ubuntu image from the provider UI.",
-    "Attach the public SSH key or use the provider password flow until the installer installs keys.",
+    "Choose password authentication, skip the provider SSH key section for now, and save the temporary VPS root password.",
     "Complete checkout and payment manually.",
     "Copy the assigned host address into the wizard; do not store it in a support-safe packet projection.",
   ],

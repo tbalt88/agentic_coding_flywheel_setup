@@ -90,6 +90,17 @@ describe("provider provisioning packet contract", () => {
     }
   });
 
+  test("keeps manual wizard providers aligned with the password-first setup flow", () => {
+    const contaboSteps = manualStepsForProvider("contabo").join("\n").toLowerCase();
+    const ovhSteps = manualStepsForProvider("ovh").join("\n").toLowerCase();
+
+    expect(contaboSteps).toContain("password");
+    expect(contaboSteps).toContain("root");
+    expect(contaboSteps).not.toContain("ssh key");
+    expect(ovhSteps).toContain("password authentication");
+    expect(ovhSteps).toContain("skip the provider ssh key section");
+  });
+
   test("falls back to generic manual steps for unknown providers", () => {
     const steps = manualStepsForProvider("not-listed");
 
