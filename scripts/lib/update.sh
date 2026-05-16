@@ -1355,6 +1355,62 @@ update_run_verified_installer_with_shell_repair() {
     return 1
 }
 
+update_create_target_readable_temp_file() {
+    local prefix="${1:-}"
+    local tmpdir_candidate=""
+    local template=""
+    local tmp_file=""
+    local mktemp_bin=""
+    local chmod_bin=""
+    local rm_bin=""
+    local -a templates=()
+
+    [[ -n "$prefix" ]] || {
+        echo "update_create_target_readable_temp_file requires a prefix" >&2
+        return 1
+    }
+    case "$prefix" in
+        .|..|*[!A-Za-z0-9._+-]*)
+            echo "Invalid temp file prefix: $prefix" >&2
+            return 1
+            ;;
+    esac
+
+    mktemp_bin="$(update_system_binary_path mktemp 2>/dev/null || true)"
+    chmod_bin="$(update_system_binary_path chmod 2>/dev/null || true)"
+    rm_bin="$(update_system_binary_path rm 2>/dev/null || true)"
+    if [[ -z "$mktemp_bin" || -z "$chmod_bin" || -z "$rm_bin" ]]; then
+        echo "Trusted temp-file helpers unavailable" >&2
+        return 1
+    fi
+
+    tmpdir_candidate="${TMPDIR:-/tmp}"
+    tmpdir_candidate="${tmpdir_candidate%/}"
+    if [[ -n "$tmpdir_candidate" && "$tmpdir_candidate" == /* && "$tmpdir_candidate" != "/" && "$tmpdir_candidate" != *[[:space:]]* ]]; then
+        templates+=("$tmpdir_candidate/${prefix}.XXXXXX")
+    fi
+    if [[ "$tmpdir_candidate" != "/tmp" ]]; then
+        templates+=("/tmp/${prefix}.XXXXXX")
+    fi
+
+    for template in "${templates[@]}"; do
+        tmp_file="$("$mktemp_bin" "$template" 2>/dev/null || true)"
+        [[ -n "$tmp_file" ]] || continue
+        if ! "$chmod_bin" 0755 "$tmp_file" 2>/dev/null; then
+            "$rm_bin" -f "$tmp_file" 2>/dev/null || true
+            continue
+        fi
+        if update_run_in_target_context "" test -r "$tmp_file" >/dev/null 2>&1; then
+            printf '%s\n' "$tmp_file"
+            return 0
+        fi
+        "$rm_bin" -f "$tmp_file" 2>/dev/null || true
+    done
+
+    echo "Failed to create a target-readable temp file for $prefix" >&2
+    return 1
+}
+
 run_cmd() {
     local desc="$1"
     shift
@@ -3707,9 +3763,9 @@ update_run_verified_installer_with_env() {
     fi
 
     local tmp_install=""
-    tmp_install=$(mktemp "${TMPDIR:-/tmp}/acfs-update-${tool}.XXXXXX" 2>/dev/null) || tmp_install=""
+    tmp_install="$(update_create_target_readable_temp_file "acfs-update-${tool}" 2>/dev/null)" || tmp_install=""
     if [[ -z "$tmp_install" ]]; then
-        echo "Failed to create temp file for verified $tool installer" >&2
+        echo "Failed to create target-readable temp file for verified $tool installer" >&2
         return 1
     fi
 
@@ -3721,7 +3777,9 @@ update_run_verified_installer_with_env() {
         return "$verify_exit_code"
     fi
 
-    if ! chmod 0755 "$tmp_install"; then
+    local installer_chmod_bin=""
+    installer_chmod_bin="$(update_system_binary_path chmod 2>/dev/null || true)"
+    if [[ -z "$installer_chmod_bin" ]] || ! "$installer_chmod_bin" 0755 "$tmp_install"; then
         rm -f "$tmp_install" 2>/dev/null || true
         return 1
     fi
@@ -5475,12 +5533,14 @@ update_stack() {
         log_item "skip" "MCP Agent Mail" "dry-run: verified install + service refresh"
     elif [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
         local tmp_install
-        tmp_install=$(mktemp "${TMPDIR:-/tmp}/acfs-install-am.XXXXXX" 2>/dev/null) || tmp_install=""
+        tmp_install="$(update_create_target_readable_temp_file "acfs-install-am" 2>/dev/null)" || tmp_install=""
         if [[ -z "$tmp_install" ]]; then
-            log_item "fail" "MCP Agent Mail" "failed to create temp file for verified installer"
+            log_item "fail" "MCP Agent Mail" "failed to create target-readable temp file for verified installer"
         else
             if verify_checksum "$url" "$expected_sha256" "$tool" > "$tmp_install"; then
-                if ! chmod 0755 "$tmp_install"; then
+                local installer_chmod_bin=""
+                installer_chmod_bin="$(update_system_binary_path chmod 2>/dev/null || true)"
+                if [[ -z "$installer_chmod_bin" ]] || ! "$installer_chmod_bin" 0755 "$tmp_install"; then
                     rm -f "$tmp_install" 2>/dev/null || true
                     tmp_install=""
                     update_finish_cmd_fail "MCP Agent Mail" "failed to make verified installer executable"
