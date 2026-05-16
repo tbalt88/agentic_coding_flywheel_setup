@@ -12916,14 +12916,29 @@ EOF
     run grep -F '\\\"\\\$acfs_pubkey\\\"' "$PROJECT_ROOT/install.sh"
     assert_success
 
-    run grep -F 'test ! -L $target_home_for_summary/.ssh' "$PROJECT_ROOT/install.sh"
+    run grep -F "printf -v target_ssh_dir_for_summary_q '%q' \"\$target_ssh_dir_for_summary\"" "$PROJECT_ROOT/install.sh"
     assert_success
 
-    run grep -F 'tail -c 1 $target_authorized_keys_for_summary' "$PROJECT_ROOT/install.sh"
+    run grep -F 'test ! -L $target_ssh_dir_for_summary_q' "$PROJECT_ROOT/install.sh"
+    assert_success
+
+    run grep -F 'tail -c 1 $target_authorized_keys_for_summary_q' "$PROJECT_ROOT/install.sh"
+    assert_success
+
+    run grep -F 'local target_ssh_remote_command_q="$target_ssh_remote_command"' "$PROJECT_ROOT/install.sh"
+    assert_success
+
+    run grep -F "printf -v target_ssh_remote_command_q \"'%s'\" \"\$target_ssh_remote_command_q\"" "$PROJECT_ROOT/install.sh"
+    assert_success
+
+    run grep -F 'ssh root@YOUR_SERVER_IP $target_ssh_remote_command_q' "$PROJECT_ROOT/install.sh"
     assert_success
 
     run grep -F 'grep -qw 10' "$PROJECT_ROOT/install.sh"
     assert_success
+
+    run grep -F 'test ! -L $target_home_for_summary/.ssh' "$PROJECT_ROOT/install.sh"
+    assert_failure
 
     run grep -F '&& cat >> $target_home_for_summary/.ssh/authorized_keys' "$PROJECT_ROOT/install.sh"
     assert_failure
@@ -12978,16 +12993,31 @@ EOF
     run grep -F 'If that cannot connect, use the root fallback:' "$PROJECT_ROOT/scripts/lib/user.sh"
     assert_success
 
-    run grep -F 'tail -c 1 ${target_home}/.ssh/authorized_keys' "$PROJECT_ROOT/scripts/lib/user.sh"
+    run grep -F "printf -v target_ssh_dir_q '%q' \"\$target_ssh_dir\"" "$PROJECT_ROOT/scripts/lib/user.sh"
+    assert_success
+
+    run grep -F 'tail -c 1 $target_authorized_keys_q' "$PROJECT_ROOT/scripts/lib/user.sh"
+    assert_success
+
+    run grep -F 'local root_remote_command_q="$root_remote_command"' "$PROJECT_ROOT/scripts/lib/user.sh"
+    assert_success
+
+    run grep -F "printf -v root_remote_command_q \"'%s'\" \"\$root_remote_command_q\"" "$PROJECT_ROOT/scripts/lib/user.sh"
+    assert_success
+
+    run grep -F 'ssh root@YOUR_SERVER_IP $root_remote_command_q' "$PROJECT_ROOT/scripts/lib/user.sh"
     assert_success
 
     run grep -F 'if ! grep -qxF' "$PROJECT_ROOT/scripts/lib/user.sh"
     assert_success
     [[ "$output" == *'acfs_pubkey'* ]]
-    [[ "$output" == *'${target_home}/.ssh/authorized_keys'* ]]
+    [[ "$output" == *'$target_authorized_keys_q'* ]]
 
     run grep -F '\\\"\\\$acfs_pubkey\\\"' "$PROJECT_ROOT/scripts/lib/user.sh"
     assert_success
+
+    run grep -F 'tail -c 1 ${target_home}/.ssh/authorized_keys' "$PROJECT_ROOT/scripts/lib/user.sh"
+    assert_failure
 
     run grep -F 'cat >> ${target_home}/.ssh/authorized_keys' "$PROJECT_ROOT/scripts/lib/user.sh"
     assert_failure

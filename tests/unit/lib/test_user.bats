@@ -175,6 +175,58 @@ EOF
     fi
 }
 
+@test "migrate_ssh_keys: root repair guidance quotes custom target home" {
+    local custom_home="$BATS_TEST_TMPDIR/target home; dollar \$bad"
+    local local_home=""
+    local root_command=""
+    local ssh_stub_dir=""
+    local quoted_ssh_dir=""
+    local quoted_authorized_keys=""
+
+    export TARGET_HOME="$custom_home"
+    export HOME="$(create_temp_dir)"
+    export ACFS_CI=false
+
+    user_resolve_current_user() {
+        printf '%s\n' "root"
+    }
+
+    user_home_for_user() {
+        [[ "${1:-}" == "testuser" ]] || return 1
+        printf '%s\n' "$custom_home"
+    }
+
+    printf -v quoted_ssh_dir '%q' "$custom_home/.ssh"
+    printf -v quoted_authorized_keys '%q' "$custom_home/.ssh/authorized_keys"
+
+    run migrate_ssh_keys
+    assert_success
+
+    root_command="$(printf '%s\n' "$output" | sed -n 's/^    \(cat .*ssh root@YOUR_SERVER_IP .*\)$/\1/p')"
+    [[ -n "$root_command" ]]
+
+    local_home="$(create_temp_dir)"
+    mkdir -p "$local_home/.ssh"
+    printf 'ssh-ed25519 AAAATEST acfs\n' > "$local_home/.ssh/acfs_ed25519.pub"
+
+    ssh_stub_dir="$(create_temp_dir)"
+    cat > "$ssh_stub_dir/ssh" <<'EOF'
+#!/usr/bin/env bash
+printf 'argc=%s\n' "$#"
+printf 'target=%s\n' "${1:-}"
+printf 'remote=%s\n' "${2:-}"
+EOF
+    chmod +x "$ssh_stub_dir/ssh"
+
+    run env HOME="$local_home" PATH="$ssh_stub_dir:$PATH" bash -c "$root_command"
+    assert_success
+    assert_output --partial "argc=2"
+    assert_output --partial "target=root@YOUR_SERVER_IP"
+    assert_output --partial "test ! -L $quoted_ssh_dir"
+    assert_output --partial "tail -c 1 $quoted_authorized_keys"
+    assert_output --partial '\$bad'
+}
+
 @test "user_home_for_user: rejects invalid fallback usernames" {
     export HOME="/"
 
