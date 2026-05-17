@@ -768,7 +768,8 @@ prompt_ssh_key() {
     chmod 600 "$authorized_keys"
 
     log_success "SSH key installed successfully"
-    log_detail "You can now connect with: ssh -i ~/.ssh/your_key root@<this_ip>"
+    log_detail "ACFS will copy this key to ${TARGET_USER:-ubuntu}; after install, reconnect with the matching private key:"
+    log_detail "  ssh -i ~/.ssh/your_key ${TARGET_USER:-ubuntu}@<this_ip>"
 
     return 0
 }

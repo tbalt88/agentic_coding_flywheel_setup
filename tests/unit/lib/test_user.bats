@@ -480,6 +480,9 @@ EOF
     assert_success
     assert_output --partial "prompting for one even in --yes mode"
     assert_output --partial "SSH key installed successfully"
+    assert_output --partial "after install, reconnect with the matching private key:"
+    assert_output --partial "ssh -i ~/.ssh/your_key testuser@<this_ip>"
+    refute_output --partial "ssh -i ~/.ssh/your_key root@<this_ip>"
     assert_output --partial "stored=$pubkey"
 }
 

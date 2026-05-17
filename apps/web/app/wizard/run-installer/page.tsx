@@ -352,16 +352,18 @@ export default function RunInstallerPage() {
       <AlertCard variant="info" title="SSH keys are handled automatically">
         <div className="space-y-3">
           <p>
-            The installer runs with <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">--yes</code>,
-            so it will not stop for an SSH key prompt.
+            If you connected to root with a password and root has no SSH key yet, the installer may ask
+            you to paste the public key you generated earlier. Paste the single line from{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">~/.ssh/acfs_ed25519.pub</code>{" "}
+            and press Enter.
           </p>
           <p>
             If your root account already has SSH keys, ACFS copies them to the{" "}
             <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{effectiveSSHUsername}</code> user it creates.
           </p>
           <p className="text-sm text-muted-foreground">
-            If you connected to root with only a password, finish the install and follow the red SSH-key command
-            in the final summary before reconnecting as{" "}
+            If you press Enter to skip the key prompt, finish the install and follow the red SSH-key command
+            in the final summary before trying to reconnect as{" "}
             <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{effectiveSSHUsername}</code>.
             If the same public key appears more than once from earlier setup attempts, ACFS keeps exact
             duplicates from being copied again.
