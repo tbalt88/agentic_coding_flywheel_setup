@@ -10,7 +10,14 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect } from "react";
 import { safeGetJSON, safeGetItem, safeSetJSON } from "./utils";
-import { getUserOS, getVPSIP, detectOS, setUserOS } from "./userPreferences";
+import {
+  detectOS,
+  getCreateVPSChecklist,
+  getUserOS,
+  getVPSIP,
+  isCreateVPSChecklistComplete,
+  setUserOS,
+} from "./userPreferences";
 
 export interface ValidationResult {
   valid: boolean;
@@ -50,13 +57,24 @@ function validateOSSelection(): ValidationResult {
 }
 
 function validateVPSCreation(): ValidationResult {
-  return getVPSIP()
+  const errors: string[] = [];
+  const checklistComplete = isCreateVPSChecklistComplete(getCreateVPSChecklist());
+  const hasIP = Boolean(getVPSIP());
+
+  if (!checklistComplete) {
+    errors.push("Complete the VPS setup checklist to continue");
+  }
+  if (!hasIP) {
+    errors.push("Enter your VPS IP address to continue");
+  }
+
+  return errors.length === 0
     ? { valid: true, errors: [] }
     : {
         valid: false,
-        errors: ["Enter your VPS IP address to continue"],
-        focusSelector: "[data-vps-ip-input]",
-    };
+        errors,
+        focusSelector: checklistComplete ? "[data-vps-ip-input]" : "[data-create-vps-checklist]",
+      };
 }
 
 const COMMAND_COMPLETION_KEY_PREFIX = "acfs-command-";

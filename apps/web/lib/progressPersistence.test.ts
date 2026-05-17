@@ -24,6 +24,7 @@ import {
   getSSHUsername,
   getVPSReadinessSelection,
   getVPSIP,
+  isCreateVPSChecklistComplete,
   normalizeSSHUsername,
   setACFSRef,
   setCreateVPSChecklist,
@@ -227,6 +228,12 @@ describe("progress persistence guards", () => {
     expect(setCreateVPSChecklist(["ubuntu"])).toBe(false);
     expect(failingBrowser.getStoredValue(CREATE_VPS_CHECKLIST_KEY)).toBeNull();
     expect(failingBrowser.dispatchCalls).toHaveLength(0);
+  });
+
+  test("create-vps checklist completion requires all wizard items", () => {
+    expect(isCreateVPSChecklistComplete(["ubuntu", "region", "password"])).toBe(false);
+    expect(isCreateVPSChecklistComplete(["region", "ubuntu", "created", "password"])).toBe(true);
+    expect(isCreateVPSChecklistComplete(["region", "ubuntu", "created", "password", "extra"])).toBe(true);
   });
 
   test("VPS readiness selection persistence normalizes wizard inputs", () => {

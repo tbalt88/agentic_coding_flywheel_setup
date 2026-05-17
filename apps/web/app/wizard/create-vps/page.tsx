@@ -10,7 +10,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { markStepComplete } from "@/lib/wizardSteps";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
-import { useCreateVPSChecklist, useVPSIP, isValidIP } from "@/lib/userPreferences";
+import {
+  CREATE_VPS_REQUIRED_CHECKLIST_ITEMS,
+  isCreateVPSChecklistComplete,
+  isValidIP,
+  type CreateVPSChecklistItemId,
+  useCreateVPSChecklist,
+  useVPSIP,
+} from "@/lib/userPreferences";
 import { withCurrentSearch } from "@/lib/utils";
 import {
   SimplerGuide,
@@ -67,10 +74,10 @@ const CHECKLIST_ITEMS = [
   { id: "region", label: "Picked a region close to me" },
   { id: "password", label: "Set a root password (or received one via email)" },
   { id: "created", label: "Created the VPS and waited for it to start" },
-] as const;
+] as const satisfies readonly { id: CreateVPSChecklistItemId; label: string }[];
 
-type ChecklistItemId = typeof CHECKLIST_ITEMS[number]["id"];
-const CHECKLIST_ITEM_IDS = new Set<ChecklistItemId>(CHECKLIST_ITEMS.map((item) => item.id));
+type ChecklistItemId = CreateVPSChecklistItemId;
+const CHECKLIST_ITEM_IDS = new Set<ChecklistItemId>(CREATE_VPS_REQUIRED_CHECKLIST_ITEMS);
 
 interface ProviderGuideProps {
   name: string;
@@ -189,6 +196,7 @@ export default function CreateVPSPage() {
     }
     return next;
   }, [storedChecklist]);
+  const allChecked = isCreateVPSChecklistComplete(storedChecklist);
 
   // Analytics tracking for this wizard step
   const { markComplete } = useWizardAnalytics({
@@ -208,8 +216,13 @@ export default function CreateVPSPage() {
       ipAddress: storedIP ?? "",
     },
     onSubmit: async ({ value }) => {
+      const normalizedIP = value.ipAddress.trim();
+      if (!allChecked || !isValidIP(normalizedIP)) {
+        return;
+      }
+
       markCompleteRef.current({ ip_entered: true });
-      setStoredIP(value.ipAddress);
+      setStoredIP(normalizedIP);
       markStepComplete(5);
       setIsNavigating(true);
       router.push(withCurrentSearch("/wizard/ssh-connect"));
@@ -238,8 +251,6 @@ export default function CreateVPSPage() {
       CHECKLIST_ITEMS.filter((item) => next.has(item.id)).map((item) => item.id)
     );
   };
-
-  const allChecked = CHECKLIST_ITEMS.every((item) => checkedItems.has(item.id));
 
   return (
     <div className="space-y-8">
@@ -278,7 +289,7 @@ export default function CreateVPSPage() {
           allChecked
             ? "border-[oklch(0.72_0.19_145/0.5)] bg-[oklch(0.72_0.19_145/0.05)]"
             : "border-border/50 bg-card/50"
-        )}>
+        )} data-create-vps-checklist>
           <div className="mb-4 flex items-start justify-between gap-4">
             <div>
               <h2 className="flex items-center gap-2 font-semibold text-foreground">

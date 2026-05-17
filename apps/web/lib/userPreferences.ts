@@ -30,6 +30,13 @@ export const ACFS_REF_KEY = "agent-flywheel-acfs-ref";
 export const CREATE_VPS_CHECKLIST_KEY = "agent-flywheel-create-vps-checklist";
 export const VPS_READINESS_SELECTION_KEY = "agent-flywheel-vps-readiness-selection";
 const CHECKED_SERVICES_KEY = "agent-flywheel-checked-services";
+export const CREATE_VPS_REQUIRED_CHECKLIST_ITEMS = [
+  "ubuntu",
+  "region",
+  "password",
+  "created",
+] as const;
+export type CreateVPSChecklistItemId = typeof CREATE_VPS_REQUIRED_CHECKLIST_ITEMS[number];
 
 const OS_QUERY_KEY = "os";
 const VPS_IP_QUERY_KEY = "ip";
@@ -389,6 +396,11 @@ export function useVPSReadinessSelection(): [
 
 export function getCreateVPSChecklist(): string[] {
   return normalizeStringList(safeGetJSON<unknown[]>(CREATE_VPS_CHECKLIST_KEY));
+}
+
+export function isCreateVPSChecklistComplete(items: readonly string[]): boolean {
+  const selectedItems = new Set(normalizeStringList(items));
+  return CREATE_VPS_REQUIRED_CHECKLIST_ITEMS.every((item) => selectedItems.has(item));
 }
 
 export function setCreateVPSChecklist(items: string[]): boolean {
