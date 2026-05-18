@@ -1853,6 +1853,27 @@ EOF
     assert_output --partial "-n $STUB_DIR/fuser $lockfile"
 }
 
+@test "update root helpers use resolved noninteractive sudo" {
+    local update="$PROJECT_ROOT/scripts/lib/update.sh"
+
+    run grep -F 'sudo_bin="$(get_sudo 2>/dev/null || true)"' "$update"
+    assert_success
+    run grep -F '_sudo_prefix_ref=("$sudo_bin" -n)' "$update"
+    assert_success
+    run grep -F 'run_cmd "$desc" "${sudo_cmd[@]}" "$@"' "$update"
+    assert_success
+    run grep -F 'run_cmd_with_retry_status "$desc" "${sudo_cmd[@]}" "$@"' "$update"
+    assert_success
+    run grep -F 'run_cmd_attempt_with_retry "$desc" "${sudo_cmd[@]}" "$@"' "$update"
+    assert_success
+    run grep -F '"${sudo_cmd[@]}" "${_apt_env[@]}" apt-get update -qq' "$update"
+    assert_success
+    run grep -F '"${sudo_cmd[@]}" chmod -x "$apt_hook"' "$update"
+    assert_success
+    run grep -F '"${sudo_cmd[@]}" env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 dpkg --configure -a' "$update"
+    assert_success
+}
+
 @test "wait_for_apt_lock: uses trusted fuser resolver instead of caller PATH" {
     init_stub_dir
     local empty_path="$HOME/empty-path"
@@ -1932,7 +1953,10 @@ exit 0
 EOF
     chmod +x "$STUB_DIR/dpkg"
 
-    get_sudo() { printf '%s\n' ""; }
+    update_sudo_prefix() {
+        local -n _sudo_prefix_ref="$1"
+        _sudo_prefix_ref=()
+    }
 
     run fix_apt_issues
 
@@ -1981,7 +2005,10 @@ exit 0
 EOF
     chmod +x "$STUB_DIR/apt-get"
 
-    get_sudo() { printf '%s\n' ""; }
+    update_sudo_prefix() {
+        local -n _sudo_prefix_ref="$1"
+        _sudo_prefix_ref=()
+    }
 
     run fix_apt_issues
 

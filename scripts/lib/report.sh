@@ -36,6 +36,33 @@ ACFS_LOG_FILE="${ACFS_LOG_FILE:-/var/log/acfs/install.log}"
 # Log helpers
 # ============================================================
 
+_acfs_report_sudo_binary_path() {
+    local candidate=""
+
+    for candidate in \
+        /usr/bin/sudo \
+        /bin/sudo \
+        /usr/local/bin/sudo \
+        /usr/local/sbin/sudo \
+        /usr/sbin/sudo \
+        /sbin/sudo
+    do
+        [[ -x "$candidate" ]] || continue
+        printf '%s\n' "$candidate"
+        return 0
+    done
+
+    return 1
+}
+
+_acfs_report_sudo() {
+    local sudo_bin=""
+
+    sudo_bin="$(_acfs_report_sudo_binary_path 2>/dev/null || true)"
+    [[ -n "$sudo_bin" ]] || return 1
+    "$sudo_bin" -n "$@"
+}
+
 _acfs_append_log_entry() {
     local entry="$1"
     local log_file="$ACFS_LOG_FILE"
@@ -44,8 +71,8 @@ _acfs_append_log_entry() {
 
     if [[ ! -d "$log_dir" ]]; then
         mkdir -p "$log_dir" 2>/dev/null || {
-            if command -v sudo &>/dev/null; then
-                sudo mkdir -p "$log_dir" 2>/dev/null || return 0
+            if _acfs_report_sudo_binary_path >/dev/null 2>&1; then
+                _acfs_report_sudo mkdir -p "$log_dir" 2>/dev/null || return 0
             else
                 return 0
             fi
@@ -57,8 +84,8 @@ _acfs_append_log_entry() {
         return 0
     fi
 
-    if command -v sudo &>/dev/null; then
-        printf '%s\n' "$entry" | sudo tee -a "$log_file" >/dev/null 2>&1 || true
+    if _acfs_report_sudo_binary_path >/dev/null 2>&1; then
+        printf '%s\n' "$entry" | _acfs_report_sudo tee -a "$log_file" >/dev/null 2>&1 || true
     fi
 }
 

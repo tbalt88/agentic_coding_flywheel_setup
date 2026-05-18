@@ -848,9 +848,12 @@ update_ensure_jq_available() {
     if [[ $EUID -eq 0 ]]; then
         "${_apt_env[@]}" apt-get update -qq 2>/dev/null \
             && "${_apt_env[@]}" apt-get install -y -qq jq 2>/dev/null || true
-    elif cmd_exists sudo; then
-        sudo "${_apt_env[@]}" apt-get update -qq 2>/dev/null \
-            && sudo "${_apt_env[@]}" apt-get install -y -qq jq 2>/dev/null || true
+    else
+        local -a sudo_cmd=()
+        if update_sudo_prefix sudo_cmd; then
+            "${sudo_cmd[@]}" "${_apt_env[@]}" apt-get update -qq 2>/dev/null \
+                && "${sudo_cmd[@]}" "${_apt_env[@]}" apt-get install -y -qq jq 2>/dev/null || true
+        fi
     fi
 
     if ! cmd_exists jq; then
@@ -1843,47 +1846,68 @@ get_sudo() {
     if [[ $EUID -eq 0 ]]; then
         echo ""
     else
-        echo "sudo"
+        update_system_binary_path sudo 2>/dev/null || return 1
     fi
+}
+
+update_sudo_prefix() {
+    local -n _sudo_prefix_ref="$1"
+    _sudo_prefix_ref=()
+
+    if [[ $EUID -eq 0 ]]; then
+        return 0
+    fi
+
+    local sudo_bin=""
+    sudo_bin="$(get_sudo 2>/dev/null || true)"
+    [[ -n "$sudo_bin" ]] || return 1
+    _sudo_prefix_ref=("$sudo_bin" -n)
+}
+
+update_sudo_display() {
+    local -n _sudo_display_ref="$1"
+    local sudo_display=""
+
+    if ((${#_sudo_display_ref[@]} > 0)); then
+        printf -v sudo_display '%q ' "${_sudo_display_ref[@]}"
+    fi
+    printf '%s' "$sudo_display"
 }
 
 run_cmd_sudo() {
     local desc="$1"
     shift
 
-    local sudo_cmd
-    sudo_cmd=$(get_sudo)
-    if [[ -n "$sudo_cmd" ]]; then
-        run_cmd "$desc" "$sudo_cmd" "$@"
-        return 0
+    local -a sudo_cmd=()
+    if ! update_sudo_prefix sudo_cmd; then
+        update_finish_cmd_fail "$desc" "sudo unavailable for non-root command"
+        return 1
     fi
-    run_cmd "$desc" "$@"
+    run_cmd "$desc" "${sudo_cmd[@]}" "$@"
 }
 
 run_cmd_sudo_with_retry_status() {
     local desc="$1"
     shift
 
-    local sudo_cmd
-    sudo_cmd=$(get_sudo)
-    if [[ -n "$sudo_cmd" ]]; then
-        run_cmd_with_retry_status "$desc" "$sudo_cmd" "$@"
-        return $?
+    local -a sudo_cmd=()
+    if ! update_sudo_prefix sudo_cmd; then
+        update_finish_cmd_fail "$desc" "sudo unavailable for non-root command"
+        return 1
     fi
-    run_cmd_with_retry_status "$desc" "$@"
+    run_cmd_with_retry_status "$desc" "${sudo_cmd[@]}" "$@"
 }
 
 run_cmd_sudo_attempt_with_retry() {
     local desc="$1"
     shift
 
-    local sudo_cmd
-    sudo_cmd=$(get_sudo)
-    if [[ -n "$sudo_cmd" ]]; then
-        run_cmd_attempt_with_retry "$desc" "$sudo_cmd" "$@"
-        return $?
+    local -a sudo_cmd=()
+    if ! update_sudo_prefix sudo_cmd; then
+        update_finish_cmd_fail "$desc" "sudo unavailable for non-root command"
+        return 1
     fi
-    run_cmd_attempt_with_retry "$desc" "$@"
+    run_cmd_attempt_with_retry "$desc" "${sudo_cmd[@]}" "$@"
 }
 
 update_system_binary_path() {
@@ -4517,22 +4541,25 @@ update_disable_needrestart_apt_hook() {
     [[ "${DRY_RUN:-false}" == "true" ]] && return 0
     command -v apt-get &>/dev/null || return 0
 
-    local sudo_cmd
-    sudo_cmd=$(get_sudo)
+    local -a sudo_cmd=()
+    if ! update_sudo_prefix sudo_cmd; then
+        log_to_file "Skipped needrestart noninteractive guard (sudo unavailable)"
+        return 0
+    fi
 
     # Method 1: disable the apt hook executable. Bulletproof — the hook can't
     # run at all once the exec bit is cleared.
     if [[ -f "$apt_hook" && -x "$apt_hook" ]]; then
         log_to_file "Disabling needrestart apt hook to prevent interactive hangs"
-        $sudo_cmd chmod -x "$apt_hook" 2>/dev/null || true
+        "${sudo_cmd[@]}" chmod -x "$apt_hook" 2>/dev/null || true
     fi
 
     # Method 2: drop a conf file that forces auto-restart if needrestart runs
     # via some other path (e.g. user re-enables the hook). Idempotent — always
     # (re)write so a stale/corrupted prior conf is corrected.
-    if [[ -d "$nr_conf_dir" ]] || $sudo_cmd mkdir -p "$nr_conf_dir" 2>/dev/null; then
+    if [[ -d "$nr_conf_dir" ]] || "${sudo_cmd[@]}" mkdir -p "$nr_conf_dir" 2>/dev/null; then
         printf '$nrconf{restart} = %s;\n' "'a'" \
-            | $sudo_cmd tee "$nr_conf_file" >/dev/null 2>&1 || true
+            | "${sudo_cmd[@]}" tee "$nr_conf_file" >/dev/null 2>&1 || true
     fi
 }
 
@@ -4701,13 +4728,16 @@ fix_apt_issues() {
 
     # Fix interrupted dpkg (check if there are pending updates)
     if ls /var/lib/dpkg/updates/* &>/dev/null; then
-        local sudo_cmd
-        sudo_cmd=$(get_sudo)
+        local -a sudo_cmd=()
+        if ! update_sudo_prefix sudo_cmd; then
+            update_finish_cmd_fail "dpkg repair" "sudo unavailable for non-root dpkg repair"
+            return 1
+        fi
         log_item "run" "dpkg repair"
-        log_to_file "Running: $sudo_cmd dpkg --configure -a"
+        log_to_file "Running: $(update_sudo_display sudo_cmd)dpkg --configure -a"
         local dpkg_output
         local dpkg_exit=0
-        if dpkg_output=$($sudo_cmd env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 dpkg --configure -a 2>&1); then
+        if dpkg_output=$("${sudo_cmd[@]}" env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 dpkg --configure -a 2>&1); then
             :
         else
             dpkg_exit=$?
@@ -4738,12 +4768,15 @@ fix_apt_issues() {
 
     if [[ "$needs_fix" == "true" ]]; then
         log_item "run" "apt repair"
-        local sudo_cmd
-        sudo_cmd=$(get_sudo)
-        log_to_file "Running: $sudo_cmd apt-get -f install -y"
+        local -a sudo_cmd=()
+        if ! update_sudo_prefix sudo_cmd; then
+            update_finish_cmd_fail "apt repair" "sudo unavailable for non-root apt repair"
+            return 1
+        fi
+        log_to_file "Running: $(update_sudo_display sudo_cmd)apt-get -f install -y"
         local apt_output
         local apt_exit=0
-        if apt_output=$($sudo_cmd env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 apt-get -f install -y 2>&1); then
+        if apt_output=$("${sudo_cmd[@]}" env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 apt-get -f install -y 2>&1); then
             :
         else
             apt_exit=$?
