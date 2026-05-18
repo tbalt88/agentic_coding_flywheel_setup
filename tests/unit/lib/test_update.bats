@@ -1363,7 +1363,13 @@ EOF
     run grep -F 'update_run_verified_installer_or_existing_on_transient "Meta Skill" ms ms ms --easy-mode || true' "$update"
     assert_success
 
+    run grep -F 'update_run_verified_installer_or_existing_on_transient "CASS Memory" cm cm cm --easy-mode --verify || true' "$update"
+    assert_success
+
     run grep -F 'run_cmd "Meta Skill" update_run_verified_installer ms --easy-mode' "$update"
+    assert_failure
+
+    run grep -F 'run_cmd "CASS Memory" update_run_verified_installer cm --easy-mode --verify' "$update"
     assert_failure
 
     run grep -F 'run_cmd "Supabase CLI" update_run_in_target_context "ACFS_PRIMARY_BIN_DIR=$supabase_primary_bin" bash -c "$(supabase_release_update_script)"' "$update"
@@ -1611,6 +1617,10 @@ EOF
         printf 'tmp-existing:%s\n' "$*" >> "$calls_file"
         return 1
     }
+    update_run_verified_installer_or_existing_on_transient() {
+        printf 'existing:%s\n' "$*" >> "$calls_file"
+        return 1
+    }
     update_run_slb_source_install() { return 0; }
     update_run_fsfs_installer() { return 0; }
 
@@ -1618,8 +1628,10 @@ EOF
     assert_success
     run grep -Fx "tmp-existing:CASS cass cass cass --easy-mode --verify" "$calls_file"
     assert_success
-    run grep -Fx "plain:cm --easy-mode --verify" "$calls_file"
+    run grep -Fx "existing:CASS Memory cm cm cm --easy-mode --verify" "$calls_file"
     assert_success
+    run grep -Fx "plain:cm --easy-mode --verify" "$calls_file"
+    assert_failure
     run grep -Fx "plain:cass --easy-mode --verify" "$calls_file"
     assert_failure
 }

@@ -5743,8 +5743,9 @@ update_stack() {
     # /tmp or /data/tmp locks cannot make only CASS fail during `acfs update`.
     update_run_verified_installer_with_target_tmpdir_or_existing_on_transient "CASS" cass cass cass --easy-mode --verify || true
 
-    # CASS Memory - always install/update
-    run_cmd "CASS Memory" update_run_verified_installer cm --easy-mode --verify
+    # CASS Memory - always install/update, but do not trust installer exit 0
+    # unless the CLI is still present and versionable afterward.
+    update_run_verified_installer_or_existing_on_transient "CASS Memory" cm cm cm --easy-mode --verify || true
 
     # CAAM - always install/update
     run_cmd "CAAM" update_run_verified_installer caam
