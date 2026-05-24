@@ -717,7 +717,11 @@ fi
 version="${tag#v}"
 base_url="https://github.com/supabase/cli/releases/download/${tag}"
 tarball="supabase_linux_${arch}.tar.gz"
-checksums="supabase_${version}_checksums.txt"
+# Supabase CLI v2.99.0 (2026-05-18) renamed the per-version asset to plain
+# `checksums.txt`. Older releases still ship `supabase_${version}_checksums.txt`.
+# Try the new name first, then fall back to the legacy one so both work. (#282)
+checksums_new="checksums.txt"
+checksums_legacy="supabase_${version}_checksums.txt"
 
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/acfs-supabase.XXXXXX")"
 tmp_tgz="$(mktemp "${TMPDIR:-/tmp}/acfs-supabase.tgz.XXXXXX")"
@@ -731,7 +735,11 @@ if [[ -z "$tmp_dir" ]] || [[ -z "$tmp_tgz" ]] || [[ -z "$tmp_checksums" ]]; then
 fi
 
 curl "${CURL_ARGS[@]}" -o "$tmp_tgz" "${base_url}/${tarball}"
-curl "${CURL_ARGS[@]}" -o "$tmp_checksums" "${base_url}/${checksums}"
+if ! curl "${CURL_ARGS[@]}" -o "$tmp_checksums" "${base_url}/${checksums_new}" 2>/dev/null \
+   && ! curl "${CURL_ARGS[@]}" -o "$tmp_checksums" "${base_url}/${checksums_legacy}" 2>/dev/null; then
+  echo "Supabase CLI: failed to download checksums (tried ${checksums_new} and ${checksums_legacy})" >&2
+  exit 1
+fi
 
 expected_sha="$(awk -v tb="$tarball" '$2 == tb {print $1; exit}' "$tmp_checksums" 2>/dev/null)"
 if [[ -z "$expected_sha" ]]; then

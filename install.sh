@@ -6006,7 +6006,11 @@ install_supabase_cli_release() {
     local version="${tag#v}"
     local base_url="https://github.com/supabase/cli/releases/download/${tag}"
     local tarball="supabase_linux_${arch}.tar.gz"
-    local checksums="supabase_${version}_checksums.txt"
+    # Supabase CLI v2.99.0 (2026-05-18) renamed the per-version asset to plain
+    # `checksums.txt`. Older releases still ship `supabase_${version}_checksums.txt`.
+    # Try the new name first, then fall back to the legacy one so both work. (#282)
+    local checksums_new="checksums.txt"
+    local checksums_legacy="supabase_${version}_checksums.txt"
 
     local tmp_dir=""
     local tmp_tgz=""
@@ -6030,8 +6034,9 @@ install_supabase_cli_release() {
         cleanup_supabase_cli_release_temp "$tmp_dir" "$tmp_tgz" "$tmp_checksums"
         return 1
     fi
-    if ! acfs_curl -o "$tmp_checksums" "${base_url}/${checksums}" 2>/dev/null; then
-        log_error "Supabase CLI: failed to download checksums"
+    if ! acfs_curl -o "$tmp_checksums" "${base_url}/${checksums_new}" 2>/dev/null \
+       && ! acfs_curl -o "$tmp_checksums" "${base_url}/${checksums_legacy}" 2>/dev/null; then
+        log_error "Supabase CLI: failed to download checksums (tried ${checksums_new} and ${checksums_legacy})"
         cleanup_supabase_cli_release_temp "$tmp_dir" "$tmp_tgz" "$tmp_checksums"
         return 1
     fi
