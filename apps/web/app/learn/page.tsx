@@ -565,7 +565,10 @@ export default function LearnDashboard() {
                     </div>
                     <div className="min-w-0">
                       <div className="font-medium transition-colors group-hover:text-primary">{item.title}</div>
-                      <div className="truncate text-sm text-muted-foreground/60">
+                      <div
+                        id={isLockedReference ? `${item.lessonSlug}-lock-hint` : undefined}
+                        className="truncate text-sm text-muted-foreground/60"
+                      >
                         {isLockedReference ? lockHint : item.desc}
                       </div>
                     </div>
@@ -582,26 +585,20 @@ export default function LearnDashboard() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={prefersReducedMotion ? { duration: 0 } : { ...springs.smooth, delay: 0.6 + index * 0.05 }}
                     whileHover={
-                      prefersReducedMotion || isLockedReference
+                      prefersReducedMotion
                         ? undefined
                         : { y: -3, scale: 1.01 }
                     }
                   >
-                    {isLockedReference ? (
-                      <div
-                        aria-disabled="true"
-                        className={`group flex items-center gap-4 rounded-xl border border-white/[0.06] bg-gradient-to-br ${item.gradient} p-4 opacity-60 backdrop-blur`}
-                      >
-                        {cardContent}
-                      </div>
-                    ) : (
-                      <Link
-                        href={item.href}
-                        className={`group flex items-center gap-4 rounded-xl border border-white/[0.06] bg-gradient-to-br ${item.gradient} p-4 backdrop-blur transition-all duration-300 hover:border-white/[0.12] hover:bg-white/[0.04]`}
-                      >
-                        {cardContent}
-                      </Link>
-                    )}
+                    <Link
+                      href={item.href}
+                      aria-describedby={isLockedReference ? `${item.lessonSlug}-lock-hint` : undefined}
+                      className={`group flex items-center gap-4 rounded-xl border border-white/[0.06] bg-gradient-to-br ${item.gradient} p-4 backdrop-blur transition-all duration-300 hover:border-white/[0.12] hover:bg-white/[0.04] ${
+                        isLockedReference ? "opacity-60 hover:opacity-80" : ""
+                      }`}
+                    >
+                      {cardContent}
+                    </Link>
                   </motion.div>
                 );
               })}
