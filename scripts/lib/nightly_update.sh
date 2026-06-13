@@ -521,7 +521,12 @@ fi
 # ACFS_NIGHTLY_SELF_UPDATE=true in a systemd override or the unit environment.
 NIGHTLY_UPDATE_ARGS=(--yes --quiet)
 if [[ "${ACFS_NIGHTLY_SELF_UPDATE:-false}" != "true" ]]; then
-    NIGHTLY_UPDATE_ARGS+=(--no-self-update)
+    # Only pass --no-self-update if this acfs-update supports it; older
+    # acfs-update versions lack the flag and would error out on an unknown arg
+    # (e.g. ACFS 0.1.0/0.5.0), which fails the whole nightly update.
+    if "$ACFS_UPDATE" --help 2>&1 | grep -q -- '--no-self-update'; then
+        NIGHTLY_UPDATE_ARGS+=(--no-self-update)
+    fi
 fi
 
 log "Running: $ACFS_UPDATE ${NIGHTLY_UPDATE_ARGS[*]}"
